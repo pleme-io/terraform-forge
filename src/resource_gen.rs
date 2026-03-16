@@ -256,22 +256,7 @@ fn render_read(
     read_mapping: &std::collections::HashMap<String, String>,
 ) -> String {
     let id_go = to_go_public_name(id_field);
-    let mut field_reads = String::new();
-    for attr in attrs {
-        if read_mapping.values().any(|v| v == &attr.tf_name) {
-            // Mapped from nested response path
-            if let Some((json_path, _)) = read_mapping.iter().find(|(_, v)| **v == attr.tf_name) {
-                field_reads.push_str(&format!(
-                    "\t// {}: mapped from {}\n",
-                    attr.tf_name, json_path
-                ));
-            }
-        }
-        field_reads.push_str(&format!(
-            "\t// state.{} = ... // populated from response\n",
-            attr.go_name
-        ));
-    }
+    let field_reads = render_read_mapping_code(attrs, read_mapping);
 
     format!(
         r#"func (r *{type_name}Resource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {{
@@ -307,13 +292,112 @@ func (r *{type_name}Resource) readResource(ctx context.Context, id string) ({typ
 
 	state.{id_go} = types.StringValue(id)
 {field_reads}
-	_ = result // TODO: map response fields to state
-
 	return state, diags
 }}
 
 "#
     )
+}
+
+/// Generate Go code that maps JSON response fields to TF state using
+/// `GetNestedString`, `GetNestedStringSlice`, etc.
+#[must_use]
+pub fn render_read_mapping_code(
+    attrs: &[TfAttribute],
+    read_mapping: &std::collections::HashMap<String, String>,
+) -> String {
+    if read_mapping.is_empty() {
+        // No mappings defined -- generate placeholder comments
+        let mut out = String::new();
+        for attr in attrs {
+            out.push_str(&format!(
+                "\t// TODO: state.{} = ... // no read_mapping defined\n",
+                attr.go_name
+            ));
+        }
+        out.push_str("\t_ = result\n");
+        return out;
+    }
+
+    let mut out = String::new();
+    // Build reverse map: tf_name -> json_path
+    let reverse: std::collections::HashMap<&str, &str> = read_mapping
+        .iter()
+        .map(|(json_path, tf_name)| (tf_name.as_str(), json_path.as_str()))
+        .collect();
+
+    for attr in attrs {
+        if let Some(json_path) = reverse.get(attr.tf_name.as_str()) {
+            match attr.tf_value_type.as_str() {
+                "types.String" => {
+                    out.push_str(&format!(
+                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
+                    ));
+                    out.push_str(&format!(
+                        "\t\tstate.{} = types.StringValue(v)\n",
+                        attr.go_name
+                    ));
+                    out.push_str("\t}\n");
+                }
+                "types.Bool" => {
+                    out.push_str(&format!(
+                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
+                    ));
+                    out.push_str(&format!(
+                        "\t\tstate.{} = types.BoolValue(v == \"true\")\n",
+                        attr.go_name
+                    ));
+                    out.push_str("\t}\n");
+                }
+                "types.Int64" => {
+                    out.push_str(&format!(
+                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
+                    ));
+                    out.push_str(&format!(
+                        "\t\tif n, err := strconv.ParseInt(v, 10, 64); err == nil {{\n"
+                    ));
+                    out.push_str(&format!(
+                        "\t\t\tstate.{} = types.Int64Value(n)\n",
+                        attr.go_name
+                    ));
+                    out.push_str("\t\t}\n");
+                    out.push_str("\t}\n");
+                }
+                "types.Float64" => {
+                    out.push_str(&format!(
+                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
+                    ));
+                    out.push_str(&format!(
+                        "\t\tif n, err := strconv.ParseFloat(v, 64); err == nil {{\n"
+                    ));
+                    out.push_str(&format!(
+                        "\t\t\tstate.{} = types.Float64Value(n)\n",
+                        attr.go_name
+                    ));
+                    out.push_str("\t\t}\n");
+                    out.push_str("\t}\n");
+                }
+                "types.Set" => {
+                    out.push_str(&format!(
+                        "\tif v, ok := GetNestedStringSlice(result, \"{json_path}\"); ok && len(v) > 0 {{\n"
+                    ));
+                    out.push_str(&format!(
+                        "\t\tsetVal, setDiags := types.SetValueFrom(ctx, types.StringType{{}}, v)\n"
+                    ));
+                    out.push_str("\t\tdiags.Append(setDiags...)\n");
+                    out.push_str(&format!("\t\tstate.{} = setVal\n", attr.go_name));
+                    out.push_str("\t}\n");
+                }
+                other => {
+                    out.push_str(&format!(
+                        "\t// TODO: handle {go} ({other}) from \"{json_path}\"\n",
+                        go = attr.go_name,
+                    ));
+                }
+            }
+        }
+    }
+    out
 }
 
 fn render_update(type_name: &str, endpoint: &str, attrs: &[TfAttribute]) -> String {

@@ -1,11 +1,12 @@
 use crate::spec::ProviderSpec;
 
-/// Generate the provider.go file that registers all resources.
+/// Generate the provider.go file that registers all resources and data sources.
 #[must_use]
 pub fn generate_provider(
     provider: &ProviderSpec,
     resource_type_names: &[String],
     _resource_tf_names: &[String],
+    data_source_type_names: &[String],
 ) -> String {
     let mut code = String::new();
 
@@ -133,12 +134,20 @@ func New(version string) func() provider.Provider {{
     code.push_str("\t}\n");
     code.push_str("}\n\n");
 
-    // DataSources (empty for now)
+    // DataSources
     code.push_str(&format!(
         "func (p *{Name}Provider) DataSources(ctx context.Context) []func() datasource.DataSource {{\n",
         Name = capitalize(&provider.provider.name),
     ));
-    code.push_str("\treturn []func() datasource.DataSource{}\n");
+    if data_source_type_names.is_empty() {
+        code.push_str("\treturn []func() datasource.DataSource{}\n");
+    } else {
+        code.push_str("\treturn []func() datasource.DataSource{\n");
+        for type_name in data_source_type_names {
+            code.push_str(&format!("\t\tresources.New{type_name}DataSource,\n"));
+        }
+        code.push_str("\t}\n");
+    }
     code.push_str("}\n");
 
     code
@@ -178,9 +187,35 @@ gateway_env_var = "AKEYLESS_GATEWAY"
         let type_names = vec!["StaticSecret".to_string()];
         let tf_names = vec!["akeyless_static_secret".to_string()];
 
-        let code = generate_provider(&provider, &type_names, &tf_names);
+        let ds_type_names: Vec<String> = vec![];
+        let code = generate_provider(&provider, &type_names, &tf_names, &ds_type_names);
         assert!(code.contains("AkeylessProvider"));
         assert!(code.contains("resources.NewStaticSecretResource"));
         assert!(code.contains("api_gateway_address"));
+    }
+
+    #[test]
+    fn generate_provider_with_data_sources() {
+        let toml_str = r#"
+[provider]
+name = "akeyless"
+description = "Akeyless Vault Provider"
+version = "1.0.0"
+sdk_import = "github.com/akeylesslabs/akeyless-go/v5"
+
+[auth]
+token_field = "token"
+env_var = "AKEYLESS_ACCESS_TOKEN"
+gateway_url_field = "api_gateway_address"
+gateway_env_var = "AKEYLESS_GATEWAY"
+"#;
+        let provider: ProviderSpec = toml::from_str(toml_str).expect("parse");
+        let type_names = vec!["StaticSecret".to_string()];
+        let tf_names = vec!["akeyless_static_secret".to_string()];
+        let ds_type_names = vec!["AuthMethod".to_string()];
+
+        let code = generate_provider(&provider, &type_names, &tf_names, &ds_type_names);
+        assert!(code.contains("resources.NewAuthMethodDataSource"));
+        assert!(code.contains("resources.NewStaticSecretResource"));
     }
 }

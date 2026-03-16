@@ -173,6 +173,71 @@ impl ProviderSpec {
     }
 }
 
+/// Top-level data source specification loaded from TOML.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSourceSpec {
+    pub data_source: DataSourceMeta,
+    pub read: ReadMapping,
+    #[serde(default)]
+    pub fields: HashMap<String, FieldOverride>,
+    #[serde(default)]
+    pub read_mapping: HashMap<String, String>,
+}
+
+/// Data source metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSourceMeta {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// Maps a read operation to an API endpoint and schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadMapping {
+    pub endpoint: String,
+    pub schema: String,
+    #[serde(default)]
+    pub response_schema: Option<String>,
+}
+
+impl DataSourceSpec {
+    /// Load a data source spec from a TOML file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file can't be read or parsed.
+    pub fn load(path: &Path) -> Result<Self, ForgeError> {
+        let content = std::fs::read_to_string(path)?;
+        let spec: Self = toml::from_str(&content)?;
+        Ok(spec)
+    }
+
+    /// Validate the data source spec against an OpenAPI spec.
+    ///
+    /// # Errors
+    ///
+    /// Returns validation errors if schemas are missing or endpoints don't exist.
+    pub fn validate(&self, api: &openapi_forge::Spec) -> Result<(), ForgeError> {
+        api.schema(&self.read.schema)
+            .map_err(|_| ForgeError::SchemaNotFound(self.read.schema.clone()))?;
+
+        if let Some(ref response_schema) = self.read.response_schema {
+            api.schema(response_schema)
+                .map_err(|_| ForgeError::SchemaNotFound(response_schema.clone()))?;
+        }
+
+        if api.endpoint_by_path(&self.read.endpoint).is_none() {
+            return Err(ForgeError::MissingEndpoint {
+                resource: self.data_source.name.clone(),
+                endpoint: self.read.endpoint.clone(),
+            });
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,6 +277,36 @@ delete_protection = { type_override = "bool" }
         assert_eq!(spec.crud.create_endpoint, "/create-secret");
         assert!(spec.fields.get("token").unwrap().skip);
         assert_eq!(spec.identity.force_new_fields, vec!["name"]);
+    }
+
+    #[test]
+    fn parse_data_source_spec() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_auth_method"
+description = "Read an auth method"
+
+[read]
+endpoint = "/get-auth-method"
+schema = "GetAuthMethod"
+response_schema = "AuthMethod"
+
+[fields]
+token = { skip = true }
+
+[read_mapping]
+"auth_method_access_id" = "access_id"
+"#;
+        let spec: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        assert_eq!(spec.data_source.name, "akeyless_auth_method");
+        assert_eq!(spec.read.endpoint, "/get-auth-method");
+        assert_eq!(spec.read.schema, "GetAuthMethod");
+        assert_eq!(spec.read.response_schema, Some("AuthMethod".to_string()));
+        assert!(spec.fields.get("token").unwrap().skip);
+        assert_eq!(
+            spec.read_mapping.get("auth_method_access_id"),
+            Some(&"access_id".to_string())
+        );
     }
 
     #[test]
