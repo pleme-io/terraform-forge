@@ -41,7 +41,7 @@ pub fn generate_schema_attributes(
         Vec::new()
     };
 
-    let _update_required: HashSet<String> = update_fields
+    let update_required: HashSet<String> = update_fields
         .iter()
         .filter(|f| f.required)
         .map(|f| f.name.clone())
@@ -73,11 +73,13 @@ pub fn generate_schema_attributes(
         let go_type = openapi_to_go(&field.type_info, type_override);
         let tf_type = go_to_tf_attr(&go_type);
 
-        // Required on create but not update = Required
-        // Required on both = Required
-        // Optional on create = Optional
-        // Computed fields are always Optional+Computed
-        let required = if computed { false } else { field.required };
+        // If a field is required on create, it must be Required in the TF
+        // schema regardless of whether it's also required on update -- the
+        // user always has to provide it for the initial Create call.
+        // Computed fields are always Optional+Computed.
+        let is_create_required = field.required;
+        let _is_update_required = update_required.contains(&field.name);
+        let required = if computed { false } else { is_create_required };
         let optional = !required || computed;
 
         let description = override_cfg
@@ -143,6 +145,34 @@ pub fn render_model_struct(resource_name: &str, attrs: &[TfAttribute]) -> String
     out
 }
 
+/// Return the Go element type expression for a collection attribute.
+fn element_type_for_attr(attr: &TfAttribute) -> &'static str {
+    // Use tf_type_expr which holds the full TfAttrType Display string, e.g.
+    // "types.SetType{ElemType: types.StringType}" — extract the inner type.
+    // We can also inspect the go_type field for a more direct mapping.
+    match attr.go_type.as_str() {
+        "[]string" | "map[string]string" => "types.StringType",
+        "[]int64" => "types.Int64Type",
+        "[]float64" => "types.Float64Type",
+        "[]bool" => "types.BoolType",
+        _ => "types.StringType",
+    }
+}
+
+/// Return the plan modifier generic type and function call for a force-new field.
+fn plan_modifier_for_attr(attr: &TfAttribute) -> (&'static str, &'static str) {
+    match attr.tf_value_type.as_str() {
+        "types.String" => ("String", "stringplanmodifier.RequiresReplace()"),
+        "types.Int64" => ("Int64", "int64planmodifier.RequiresReplace()"),
+        "types.Float64" => ("Float64", "float64planmodifier.RequiresReplace()"),
+        "types.Bool" => ("Bool", "boolplanmodifier.RequiresReplace()"),
+        "types.Set" => ("Set", "setplanmodifier.RequiresReplace()"),
+        "types.List" => ("List", "listplanmodifier.RequiresReplace()"),
+        "types.Map" => ("Map", "mapplanmodifier.RequiresReplace()"),
+        _ => ("String", "stringplanmodifier.RequiresReplace()"),
+    }
+}
+
 fn render_single_attribute(attr: &TfAttribute) -> String {
     let mut out = String::new();
     let indent = "\t\t\t";
@@ -192,22 +222,17 @@ fn render_single_attribute(attr: &TfAttribute) -> String {
         || attr.tf_value_type.contains("List")
         || attr.tf_value_type.contains("Map")
     {
-        out.push_str(&format!("{indent}\tElementType: types.StringType{{}},\n"));
+        let element_type = element_type_for_attr(attr);
+        out.push_str(&format!("{indent}\tElementType: {element_type}{{}},\n"));
     }
 
     // Plan modifiers for force-new
     if attr.force_new {
-        let modifier = if attr.tf_value_type == "types.String" {
-            "stringplanmodifier.RequiresReplace()"
-        } else if attr.tf_value_type == "types.Int64" {
-            "int64planmodifier.RequiresReplace()"
-        } else {
-            "stringplanmodifier.RequiresReplace()"
-        };
+        let (modifier_type, modifier_fn) = plan_modifier_for_attr(attr);
         out.push_str(&format!(
-            "{indent}\tPlanModifiers: []planmodifier.String{{\n"
+            "{indent}\tPlanModifiers: []planmodifier.{modifier_type}{{\n"
         ));
-        out.push_str(&format!("{indent}\t\t{modifier},\n"));
+        out.push_str(&format!("{indent}\t\t{modifier_fn},\n"));
         out.push_str(&format!("{indent}\t}},\n"));
     }
 

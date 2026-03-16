@@ -1,3 +1,4 @@
+use iac_forge::IacType;
 use openapi_forge::TypeInfo;
 
 /// Go type representation for code generation.
@@ -168,9 +169,94 @@ pub fn to_tf_name(name: &str) -> String {
     name.replace('-', "_")
 }
 
+/// Convert a platform-independent `IacType` to a Go type.
+impl From<&IacType> for GoType {
+    fn from(iac: &IacType) -> Self {
+        match iac {
+            IacType::String => Self::String,
+            IacType::Integer => Self::Int64,
+            IacType::Float => Self::Float64,
+            IacType::Boolean => Self::Bool,
+            IacType::List(inner) => match inner.as_ref() {
+                IacType::String => Self::ListOfString,
+                IacType::Integer => Self::ListOfInt64,
+                IacType::Float => Self::ListOfFloat64,
+                IacType::Boolean => Self::ListOfBool,
+                _ => Self::ListOfString,
+            },
+            IacType::Set(inner) => match inner.as_ref() {
+                IacType::String => Self::ListOfString,
+                IacType::Integer => Self::ListOfInt64,
+                IacType::Float => Self::ListOfFloat64,
+                IacType::Boolean => Self::ListOfBool,
+                _ => Self::ListOfString,
+            },
+            IacType::Map(_) => Self::MapOfString,
+            IacType::Object { name, .. } => Self::Object(name.clone()),
+            IacType::Enum { underlying, .. } => Self::from(underlying.as_ref()),
+            IacType::Any => Self::String,
+        }
+    }
+}
+
+/// Convert a platform-independent `IacType` to a TF attribute type.
+impl From<&IacType> for TfAttrType {
+    fn from(iac: &IacType) -> Self {
+        let go = GoType::from(iac);
+        go_to_tf_attr(&go)
+    }
+}
+
+/// Convert an `IacAttribute` to a resolved `TfAttribute`.
+#[must_use]
+pub fn iac_attr_to_tf(attr: &iac_forge::IacAttribute) -> crate::schema_gen::TfAttribute {
+    let go_type = GoType::from(&attr.iac_type);
+    let tf_type = go_to_tf_attr(&go_type);
+
+    crate::schema_gen::TfAttribute {
+        tf_name: attr.canonical_name.clone(),
+        go_name: to_go_public_name(&attr.api_name),
+        description: attr.description.clone(),
+        required: attr.required,
+        optional: !attr.required || attr.computed,
+        computed: attr.computed,
+        sensitive: attr.sensitive,
+        force_new: attr.immutable,
+        tf_type_expr: tf_type.to_string(),
+        tf_value_type: tf_value_type(&go_type).to_string(),
+        go_type: go_type.to_string(),
+        default_value: attr.default_value.as_ref().map(|v| format!("{v}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iac_type_to_go_type() {
+        assert_eq!(GoType::from(&IacType::String), GoType::String);
+        assert_eq!(GoType::from(&IacType::Integer), GoType::Int64);
+        assert_eq!(GoType::from(&IacType::Float), GoType::Float64);
+        assert_eq!(GoType::from(&IacType::Boolean), GoType::Bool);
+        assert_eq!(
+            GoType::from(&IacType::List(Box::new(IacType::String))),
+            GoType::ListOfString
+        );
+        assert_eq!(
+            GoType::from(&IacType::Map(Box::new(IacType::String))),
+            GoType::MapOfString
+        );
+    }
+
+    #[test]
+    fn iac_enum_to_go_type() {
+        let enum_type = IacType::Enum {
+            values: vec!["a".into(), "b".into()],
+            underlying: Box::new(IacType::String),
+        };
+        assert_eq!(GoType::from(&enum_type), GoType::String);
+    }
 
     #[test]
     fn type_mapping() {

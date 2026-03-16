@@ -5,6 +5,7 @@ mod resource_gen;
 mod schema_gen;
 mod spec;
 mod test_gen;
+pub mod tf_backend;
 mod type_map;
 
 pub use datasource_gen::{
@@ -21,7 +22,8 @@ pub use spec::{
     ProviderDefaults, ProviderMeta, ProviderSpec, ReadMapping, ResourceMeta, ResourceSpec,
 };
 pub use test_gen::{GeneratedTest, generate_test};
+pub use tf_backend::TerraformBackend;
 pub use type_map::{
-    GoType, TfAttrType, go_to_tf_attr, openapi_to_go, sdk_setter, tf_value_type, to_go_public_name,
-    to_tf_name,
+    GoType, TfAttrType, go_to_tf_attr, iac_attr_to_tf, openapi_to_go, sdk_setter, tf_value_type,
+    to_go_public_name, to_tf_name,
 };
