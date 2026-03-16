@@ -71,6 +71,12 @@ impl Backend for TerraformBackend {
         "terraform"
     }
 
+    /// Generate a partial TF resource Go file (imports, type, model, schema, read mapping).
+    ///
+    /// **WIP**: This currently generates schema + model + read-mapping code but does NOT
+    /// produce full CRUD methods (Create/Read/Update/Delete/ImportState). For complete
+    /// resource generation, use `crate::resource_gen::generate_resource()` which takes
+    /// an OpenAPI `Spec`. Full CRUD generation via the Backend trait is planned.
     fn generate_resource(
         &self,
         resource: &IacResource,
@@ -117,7 +123,13 @@ impl Backend for TerraformBackend {
                     .map(|rp| (rp.clone(), a.canonical_name.clone()))
             })
             .collect();
-        let _ = render_read_mapping_code(&attrs, &read_mapping);
+        let mapping_code = render_read_mapping_code(&attrs, &read_mapping);
+        // Include the read-mapping code as a comment block for reference
+        // until full CRUD generation is implemented via the Backend trait.
+        code.push_str("// --- Read mapping (for readResource helper) ---\n");
+        code.push_str("// ");
+        code.push_str(&mapping_code.replace('\n', "\n// "));
+        code.push('\n');
 
         Ok(vec![GeneratedArtifact {
             path: format!("resources/{file_name}"),
@@ -215,26 +227,27 @@ impl Backend for TerraformBackend {
 }
 
 /// Convert IacResource back to ResourceSpec for backward-compat functions.
+///
+/// Includes ALL attributes (not just flagged ones) so that test generation
+/// and other consumers have the complete field set available.
 fn ir_to_resource_spec(resource: &IacResource) -> crate::spec::ResourceSpec {
     let mut fields = std::collections::HashMap::new();
     for attr in &resource.attributes {
-        if attr.sensitive || attr.computed || attr.immutable {
-            fields.insert(
-                attr.api_name.clone(),
-                crate::spec::FieldOverride {
-                    computed: attr.computed,
-                    sensitive: attr.sensitive,
-                    skip: false,
-                    type_override: None,
-                    description: if attr.description.is_empty() {
-                        None
-                    } else {
-                        Some(attr.description.clone())
-                    },
-                    force_new: attr.immutable,
+        fields.insert(
+            attr.api_name.clone(),
+            crate::spec::FieldOverride {
+                computed: attr.computed,
+                sensitive: attr.sensitive,
+                skip: false,
+                type_override: None,
+                description: if attr.description.is_empty() {
+                    None
+                } else {
+                    Some(attr.description.clone())
                 },
-            );
-        }
+                force_new: attr.immutable,
+            },
+        );
     }
 
     crate::spec::ResourceSpec {
@@ -272,7 +285,10 @@ fn ir_to_resource_spec(resource: &IacResource) -> crate::spec::ResourceSpec {
     }
 }
 
-/// Render Go imports for a TF resource (same logic as resource_gen but operates on TfAttribute).
+/// Render Go imports for a TF resource.
+///
+/// Matches the conditional import logic from `resource_gen::render_imports()`,
+/// including type-specific plan modifiers for Int64, Bool, Float64, Set, and List.
 fn render_tf_imports(
     type_name: &str,
     sdk_import: &str,
@@ -281,6 +297,22 @@ fn render_tf_imports(
     let needs_strconv = attrs
         .iter()
         .any(|a| a.tf_value_type == "types.Int64" || a.tf_value_type == "types.Float64");
+
+    let needs_int64_planmod = attrs
+        .iter()
+        .any(|a| a.force_new && a.tf_value_type == "types.Int64");
+    let needs_bool_planmod = attrs
+        .iter()
+        .any(|a| a.force_new && a.tf_value_type == "types.Bool");
+    let needs_float64_planmod = attrs
+        .iter()
+        .any(|a| a.force_new && a.tf_value_type == "types.Float64");
+    let needs_set_planmod = attrs
+        .iter()
+        .any(|a| a.force_new && a.tf_value_type == "types.Set");
+    let needs_list_planmod = attrs
+        .iter()
+        .any(|a| a.force_new && a.tf_value_type == "types.List");
     let has_force_new = attrs.iter().any(|a| a.force_new);
 
     let mut stdlib = String::new();
@@ -301,6 +333,33 @@ fn render_tf_imports(
         framework.push_str(
             "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier\"\n",
         );
+        if needs_bool_planmod {
+            framework.push_str(
+                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier\"\n",
+            );
+        }
+        if needs_float64_planmod {
+            framework.push_str(
+                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier\"\n",
+            );
+        }
+        if needs_int64_planmod {
+            framework.push_str(
+                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier\"\n",
+            );
+        }
+        if needs_list_planmod {
+            framework.push_str(
+                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier\"\n",
+            );
+        }
+        if needs_set_planmod {
+            framework.push_str(
+                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier\"\n",
+            );
+        }
+        // Always include string plan modifier if any force_new field exists,
+        // since string is the most common type
         framework.push_str(
             "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier\"\n",
         );
@@ -477,5 +536,258 @@ mod tests {
         assert_eq!(artifacts[0].kind, ArtifactKind::Provider);
         assert!(artifacts[0].content.contains("AkeylessProvider"));
         assert!(artifacts[0].content.contains("NewStaticSecretResource"));
+    }
+
+    #[test]
+    fn imports_int64_force_new_includes_int64planmodifier() {
+        let resource = IacResource {
+            name: "akeyless_int_resource".to_string(),
+            description: "Resource with int64 force_new".to_string(),
+            category: "test".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/create".to_string(),
+                create_schema: "Create".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/read".to_string(),
+                read_schema: "Read".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/delete".to_string(),
+                delete_schema: "Delete".to_string(),
+            },
+            attributes: vec![IacAttribute {
+                api_name: "max_ttl".to_string(),
+                canonical_name: "max_ttl".to_string(),
+                description: "Max TTL".to_string(),
+                iac_type: IacType::Integer,
+                required: true,
+                computed: false,
+                sensitive: false,
+                immutable: true, // force_new
+                default_value: None,
+                enum_values: None,
+                read_path: None,
+            }],
+            identity: IdentityInfo {
+                id_field: "max_ttl".to_string(),
+                import_field: "max_ttl".to_string(),
+                force_replace_fields: vec!["max_ttl".to_string()],
+            },
+        };
+
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+
+        assert!(
+            code.contains("int64planmodifier"),
+            "Int64 force_new field should produce int64planmodifier import"
+        );
+        assert!(
+            code.contains("planmodifier"),
+            "force_new field should produce planmodifier import"
+        );
+        assert!(
+            code.contains("strconv"),
+            "Int64 field should produce strconv import"
+        );
+    }
+
+    #[test]
+    fn imports_bool_force_new_includes_boolplanmodifier() {
+        let resource = IacResource {
+            name: "akeyless_bool_resource".to_string(),
+            description: "Resource with bool force_new".to_string(),
+            category: "test".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/create".to_string(),
+                create_schema: "Create".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/read".to_string(),
+                read_schema: "Read".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/delete".to_string(),
+                delete_schema: "Delete".to_string(),
+            },
+            attributes: vec![IacAttribute {
+                api_name: "is_admin".to_string(),
+                canonical_name: "is_admin".to_string(),
+                description: "Admin flag".to_string(),
+                iac_type: IacType::Boolean,
+                required: true,
+                computed: false,
+                sensitive: false,
+                immutable: true, // force_new
+                default_value: None,
+                enum_values: None,
+                read_path: None,
+            }],
+            identity: IdentityInfo {
+                id_field: "is_admin".to_string(),
+                import_field: "is_admin".to_string(),
+                force_replace_fields: vec!["is_admin".to_string()],
+            },
+        };
+
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+
+        assert!(
+            code.contains("boolplanmodifier"),
+            "Bool force_new field should produce boolplanmodifier import"
+        );
+        assert!(
+            code.contains("stringplanmodifier"),
+            "force_new should always include stringplanmodifier"
+        );
+    }
+
+    #[test]
+    fn generate_resource_empty_attributes() {
+        let resource = IacResource {
+            name: "akeyless_empty".to_string(),
+            description: "Empty resource".to_string(),
+            category: "test".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/create".to_string(),
+                create_schema: "Create".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/read".to_string(),
+                read_schema: "Read".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/delete".to_string(),
+                delete_schema: "Delete".to_string(),
+            },
+            attributes: vec![],
+            identity: IdentityInfo {
+                id_field: "id".to_string(),
+                import_field: "id".to_string(),
+                force_replace_fields: vec![],
+            },
+        };
+
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        let code = &artifacts[0].content;
+
+        // Should still produce valid Go with type + model + schema
+        assert!(code.contains("EmptyResource"));
+        assert!(code.contains("EmptyModel"));
+        // Should NOT include planmodifier when there are no force_new fields
+        assert!(
+            !code.contains("planmodifier"),
+            "No force_new fields means no planmodifier imports"
+        );
+    }
+
+    #[test]
+    fn generate_resource_no_read_mapping() {
+        let resource = IacResource {
+            name: "akeyless_no_read".to_string(),
+            description: "No read mapping".to_string(),
+            category: "test".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/create".to_string(),
+                create_schema: "Create".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/read".to_string(),
+                read_schema: "Read".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/delete".to_string(),
+                delete_schema: "Delete".to_string(),
+            },
+            attributes: vec![IacAttribute {
+                api_name: "name".to_string(),
+                canonical_name: "name".to_string(),
+                description: "Name".to_string(),
+                iac_type: IacType::String,
+                required: true,
+                computed: false,
+                sensitive: false,
+                immutable: false,
+                default_value: None,
+                enum_values: None,
+                read_path: None, // No read mapping
+            }],
+            identity: IdentityInfo {
+                id_field: "name".to_string(),
+                import_field: "name".to_string(),
+                force_replace_fields: vec![],
+            },
+        };
+
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+
+        // Should include read-mapping section with TODO comments when no mappings exist
+        assert!(
+            code.contains("Read mapping"),
+            "Output should contain read mapping section"
+        );
+        assert!(
+            code.contains("TODO"),
+            "No read_path should generate TODO comments"
+        );
+    }
+
+    #[test]
+    fn ir_to_resource_spec_includes_all_attributes() {
+        let resource = make_test_resource();
+        let spec = ir_to_resource_spec(&resource);
+
+        // All 3 attributes should be present, not just the flagged ones
+        assert_eq!(
+            spec.fields.len(),
+            3,
+            "ir_to_resource_spec should include all attributes, not just flagged ones"
+        );
+        assert!(spec.fields.contains_key("name"));
+        assert!(spec.fields.contains_key("value"));
+        assert!(spec.fields.contains_key("tags"));
+
+        // Verify flags are preserved
+        let name_field = spec.fields.get("name").unwrap();
+        assert!(name_field.force_new);
+        assert!(!name_field.sensitive);
+
+        let value_field = spec.fields.get("value").unwrap();
+        assert!(value_field.sensitive);
+        assert!(!value_field.force_new);
+
+        let tags_field = spec.fields.get("tags").unwrap();
+        assert!(!tags_field.sensitive);
+        assert!(!tags_field.force_new);
+        assert!(!tags_field.computed);
+    }
+
+    #[test]
+    fn generate_resource_includes_read_mapping_code() {
+        let backend = TerraformBackend::new("github.com/akeylesslabs/akeyless-go/v5");
+        let provider = make_test_provider();
+        let resource = make_test_resource();
+
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+
+        // The read mapping code should be included (as comments), not discarded
+        assert!(
+            code.contains("Read mapping"),
+            "Output should contain read mapping section"
+        );
+        // item_name is the read_path for the "name" attribute
+        assert!(
+            code.contains("item_name"),
+            "Output should contain the read_path references"
+        );
     }
 }
