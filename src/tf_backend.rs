@@ -438,6 +438,7 @@ mod tests {
                     default_value: None,
                     enum_values: None,
                     read_path: Some("item_name".to_string()),
+                    update_only: false,
                 },
                 IacAttribute {
                     api_name: "value".to_string(),
@@ -451,6 +452,7 @@ mod tests {
                     default_value: None,
                     enum_values: None,
                     read_path: None,
+                    update_only: false,
                 },
                 IacAttribute {
                     api_name: "tags".to_string(),
@@ -464,6 +466,7 @@ mod tests {
                     default_value: None,
                     enum_values: None,
                     read_path: Some("item_tags".to_string()),
+                    update_only: false,
                 },
             ],
             identity: IdentityInfo {
@@ -567,6 +570,7 @@ mod tests {
                 default_value: None,
                 enum_values: None,
                 read_path: None,
+                update_only: false,
             }],
             identity: IdentityInfo {
                 id_field: "max_ttl".to_string(),
@@ -623,6 +627,7 @@ mod tests {
                 default_value: None,
                 enum_values: None,
                 read_path: None,
+                update_only: false,
             }],
             identity: IdentityInfo {
                 id_field: "is_admin".to_string(),
@@ -716,6 +721,7 @@ mod tests {
                 default_value: None,
                 enum_values: None,
                 read_path: None, // No read mapping
+                update_only: false,
             }],
             identity: IdentityInfo {
                 id_field: "name".to_string(),
