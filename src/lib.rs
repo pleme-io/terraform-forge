@@ -4,6 +4,7 @@ mod provider_gen;
 mod resource_gen;
 mod schema_gen;
 mod spec;
+mod test_gen;
 mod type_map;
 
 pub use datasource_gen::{
@@ -19,6 +20,7 @@ pub use spec::{
     AuthConfig, CrudMapping, DataSourceMeta, DataSourceSpec, FieldOverride, IdentityConfig,
     ProviderDefaults, ProviderMeta, ProviderSpec, ReadMapping, ResourceMeta, ResourceSpec,
 };
+pub use test_gen::{GeneratedTest, generate_test};
 pub use type_map::{
     GoType, TfAttrType, go_to_tf_attr, openapi_to_go, sdk_setter, tf_value_type, to_go_public_name,
     to_tf_name,
