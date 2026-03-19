@@ -148,25 +148,13 @@ pub fn sdk_setter(field_name: &str, go_type: &GoType) -> String {
 ///           `access_expires` -> `AccessExpires`
 #[must_use]
 pub fn to_go_public_name(name: &str) -> String {
-    name.split(|c: char| c == '-' || c == '_')
-        .filter(|s| !s.is_empty())
-        .map(|s| {
-            let mut chars = s.chars();
-            match chars.next() {
-                Some(c) => {
-                    let upper: String = c.to_uppercase().collect();
-                    format!("{upper}{}", chars.as_str())
-                }
-                None => String::new(),
-            }
-        })
-        .collect()
+    meimei::go::to_public(name)
 }
 
 /// Convert a name to TF snake_case (hyphens become underscores).
 #[must_use]
 pub fn to_tf_name(name: &str) -> String {
-    name.replace('-', "_")
+    meimei::to_snake_case(name)
 }
 
 /// Convert a platform-independent `IacType` to a Go type.

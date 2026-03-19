@@ -1,4 +1,3 @@
-use heck::ToUpperCamelCase;
 use openapi_forge::Spec;
 
 use crate::error::ForgeError;
@@ -30,12 +29,13 @@ pub fn generate_resource(
     let attrs = generate_schema_attributes(resource, api, defaults)?;
 
     // Resource type name: akeyless_static_secret -> StaticSecret
-    let type_name = resource
-        .resource
-        .name
-        .strip_prefix("akeyless_")
-        .unwrap_or(&resource.resource.name)
-        .to_upper_camel_case();
+    let type_name = meimei::to_pascal_case(
+        resource
+            .resource
+            .name
+            .strip_prefix("akeyless_")
+            .unwrap_or(&resource.resource.name),
+    );
 
     let file_name = format!("resource_{}.go", to_tf_name(&resource.resource.name));
 
@@ -228,10 +228,11 @@ fn render_metadata(resource_name: &str) -> String {
 }}
 
 "#,
-        type_name = resource_name
-            .strip_prefix("akeyless_")
-            .unwrap_or(resource_name)
-            .to_upper_camel_case(),
+        type_name = meimei::to_pascal_case(
+            resource_name
+                .strip_prefix("akeyless_")
+                .unwrap_or(resource_name)
+        ),
         suffix = resource_name
             .strip_prefix("akeyless_")
             .unwrap_or(resource_name),

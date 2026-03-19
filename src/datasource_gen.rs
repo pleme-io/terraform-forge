@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use heck::ToUpperCamelCase;
 use openapi_forge::Spec;
 
 use crate::error::ForgeError;
@@ -103,12 +102,12 @@ pub fn generate_datasource(
 ) -> Result<GeneratedDataSource, ForgeError> {
     let attrs = generate_datasource_attributes(ds, api, defaults)?;
 
-    let type_name = ds
-        .data_source
-        .name
-        .strip_prefix("akeyless_")
-        .unwrap_or(&ds.data_source.name)
-        .to_upper_camel_case();
+    let type_name = meimei::to_pascal_case(
+        ds.data_source
+            .name
+            .strip_prefix("akeyless_")
+            .unwrap_or(&ds.data_source.name),
+    );
 
     let file_name = format!("datasource_{}.go", to_tf_name(&ds.data_source.name));
 
@@ -193,7 +192,7 @@ fn render_ds_model(type_name: &str, attrs: &[TfAttribute]) -> String {
 
 fn render_ds_metadata(ds_name: &str) -> String {
     let suffix = ds_name.strip_prefix("akeyless_").unwrap_or(ds_name);
-    let type_name = suffix.to_upper_camel_case();
+    let type_name = meimei::to_pascal_case(suffix);
     format!(
         r#"func (d *{type_name}DataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {{
 	resp.TypeName = req.ProviderTypeName + "_{suffix}"

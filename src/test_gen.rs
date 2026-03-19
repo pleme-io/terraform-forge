@@ -1,5 +1,3 @@
-use heck::ToUpperCamelCase;
-
 use crate::spec::ResourceSpec;
 use crate::type_map::to_tf_name;
 
@@ -13,12 +11,13 @@ pub struct GeneratedTest {
 /// Generate acceptance test scaffolding for a resource.
 #[must_use]
 pub fn generate_test(resource: &ResourceSpec) -> GeneratedTest {
-    let type_name = resource
-        .resource
-        .name
-        .strip_prefix("akeyless_")
-        .unwrap_or(&resource.resource.name)
-        .to_upper_camel_case();
+    let type_name = meimei::to_pascal_case(
+        resource
+            .resource
+            .name
+            .strip_prefix("akeyless_")
+            .unwrap_or(&resource.resource.name),
+    );
 
     let tf_name = &resource.resource.name;
     let file_name = format!("resource_{}_test.go", to_tf_name(tf_name));
