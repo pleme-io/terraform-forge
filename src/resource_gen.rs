@@ -318,7 +318,7 @@ fn render_read(
     endpoint: &str,
     attrs: &[TfAttribute],
     id_field: &str,
-    read_mapping: &std::collections::HashMap<String, String>,
+    read_mapping: &std::collections::BTreeMap<String, String>,
 ) -> String {
     let id_go = to_go_public_name(id_field);
     let field_reads = render_read_mapping_code(attrs, read_mapping);
@@ -369,7 +369,7 @@ func (r *{type_name}Resource) readResource(ctx context.Context, id string) ({typ
 #[must_use]
 pub fn render_read_mapping_code(
     attrs: &[TfAttribute],
-    read_mapping: &std::collections::HashMap<String, String>,
+    read_mapping: &std::collections::BTreeMap<String, String>,
 ) -> String {
     if read_mapping.is_empty() {
         // No mappings defined -- generate placeholder comments
@@ -386,7 +386,7 @@ pub fn render_read_mapping_code(
 
     let mut out = String::new();
     // Build reverse map: tf_name -> json_path
-    let reverse: std::collections::HashMap<&str, &str> = read_mapping
+    let reverse: std::collections::BTreeMap<&str, &str> = read_mapping
         .iter()
         .map(|(json_path, tf_name)| (tf_name.as_str(), json_path.as_str()))
         .collect();

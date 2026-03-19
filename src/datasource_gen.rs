@@ -296,7 +296,7 @@ fn render_ds_read(
     type_name: &str,
     endpoint: &str,
     attrs: &[TfAttribute],
-    read_mapping: &std::collections::HashMap<String, String>,
+    read_mapping: &std::collections::BTreeMap<String, String>,
 ) -> String {
     let field_reads = render_read_mapping_code(attrs, read_mapping);
 

@@ -114,7 +114,7 @@ impl Backend for TerraformBackend {
         code.push('\n');
 
         // Read mapping for the readResource helper
-        let read_mapping: std::collections::HashMap<String, String> = resource
+        let read_mapping: std::collections::BTreeMap<String, String> = resource
             .attributes
             .iter()
             .filter_map(|a| {
@@ -231,7 +231,7 @@ impl Backend for TerraformBackend {
 /// Includes ALL attributes (not just flagged ones) so that test generation
 /// and other consumers have the complete field set available.
 fn ir_to_resource_spec(resource: &IacResource) -> crate::spec::ResourceSpec {
-    let mut fields = std::collections::HashMap::new();
+    let mut fields = std::collections::BTreeMap::new();
     for attr in &resource.attributes {
         fields.insert(
             attr.api_name.clone(),
