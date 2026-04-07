@@ -1166,4 +1166,152 @@ mod tests {
             .unwrap();
         assert_eq!(artifacts[0].path, "provider/provider.go");
     }
+
+    // --- from_provider with non-string sdk_import ---
+
+    #[test]
+    fn from_provider_non_string_sdk_import_falls_back() {
+        let mut platform_config = std::collections::HashMap::new();
+        let mut tf_table = toml::map::Map::new();
+        tf_table.insert(
+            "sdk_import".to_string(),
+            toml::Value::Integer(42),
+        );
+        platform_config.insert(
+            "terraform".to_string(),
+            toml::Value::Table(tf_table),
+        );
+
+        let provider = IacProvider {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            version: "1.0".to_string(),
+            auth: AuthInfo {
+                token_field: "t".to_string(),
+                env_var: "E".to_string(),
+                gateway_url_field: "g".to_string(),
+                gateway_env_var: "G".to_string(),
+            },
+            skip_fields: vec![],
+            platform_config,
+        };
+
+        let backend = TerraformBackend::from_provider(&provider);
+        assert_eq!(
+            backend.sdk_import, "",
+            "Non-string sdk_import should fall back to empty"
+        );
+    }
+
+    // --- naming() method ---
+
+    #[test]
+    fn backend_naming_returns_naming_convention() {
+        let backend = TerraformBackend::new("sdk");
+        let naming = backend.naming();
+        assert_eq!(naming.field_name("test-field"), "test_field");
+    }
+
+    // --- generate_resource with multiple types ---
+
+    #[test]
+    fn generate_resource_with_bool_and_int_attrs() {
+        let resource = IacResource {
+            name: "akeyless_multi".to_string(),
+            description: "Multi-type resource".to_string(),
+            category: "test".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/create".to_string(),
+                create_schema: "Create".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/read".to_string(),
+                read_schema: "Read".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/delete".to_string(),
+                delete_schema: "Delete".to_string(),
+            },
+            attributes: vec![
+                IacAttribute {
+                    api_name: "name".to_string(),
+                    canonical_name: "name".to_string(),
+                    description: "Name".to_string(),
+                    iac_type: IacType::String,
+                    required: true,
+                    computed: false,
+                    sensitive: false,
+                    immutable: false,
+                    default_value: None,
+                    enum_values: None,
+                    read_path: None,
+                    update_only: false,
+                },
+                IacAttribute {
+                    api_name: "count".to_string(),
+                    canonical_name: "count".to_string(),
+                    description: "Count".to_string(),
+                    iac_type: IacType::Integer,
+                    required: false,
+                    computed: false,
+                    sensitive: false,
+                    immutable: false,
+                    default_value: None,
+                    enum_values: None,
+                    read_path: None,
+                    update_only: false,
+                },
+                IacAttribute {
+                    api_name: "enabled".to_string(),
+                    canonical_name: "enabled".to_string(),
+                    description: "Enabled".to_string(),
+                    iac_type: IacType::Boolean,
+                    required: false,
+                    computed: false,
+                    sensitive: false,
+                    immutable: false,
+                    default_value: None,
+                    enum_values: None,
+                    read_path: None,
+                    update_only: false,
+                },
+            ],
+            identity: IdentityInfo {
+                id_field: "name".to_string(),
+                import_field: "name".to_string(),
+                force_replace_fields: vec![],
+            },
+        };
+
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+        assert!(code.contains("MultiModel"));
+        assert!(code.contains("types.Int64"));
+        assert!(code.contains("types.Bool"));
+        assert!(code.contains("types.String"));
+        assert!(code.contains("strconv"));
+    }
+
+    // --- generate_provider with empty resources but data sources ---
+
+    #[test]
+    fn generate_provider_with_only_data_sources() {
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let ds = IacDataSource {
+            name: "akeyless_secret_value".to_string(),
+            description: "Read secret".to_string(),
+            read_endpoint: "/get-secret".to_string(),
+            read_schema: "GetSecret".to_string(),
+            read_response_schema: None,
+            attributes: vec![],
+        };
+        let artifacts = backend
+            .generate_provider(&provider, &[], &[ds])
+            .unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert!(artifacts[0].content.contains("NewSecretValueDataSource"));
+        assert!(!artifacts[0].content.contains("NewResource,"));
+    }
 }
