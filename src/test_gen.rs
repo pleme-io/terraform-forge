@@ -2,7 +2,7 @@ use crate::spec::ResourceSpec;
 use crate::type_map::{to_tf_name, to_type_name};
 
 /// Generated acceptance test file for a resource.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct GeneratedTest {
     pub file_name: String,
