@@ -144,4 +144,212 @@ value = { sensitive = true }
         assert!(test.go_code.contains("\"value\""));
         assert_eq!(test.file_name, "resource_akeyless_static_secret_test.go");
     }
+
+    // --- No sensitive fields ---
+
+    #[test]
+    fn generate_test_no_sensitive_fields() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_role"
+description = "Role"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "C"
+read_endpoint = "/read"
+read_schema = "R"
+delete_endpoint = "/delete"
+delete_schema = "D"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(test.go_code.contains("TestAccRole_basic"));
+        assert!(
+            !test.go_code.contains("ImportStateVerifyIgnore"),
+            "No sensitive fields means no ImportStateVerifyIgnore"
+        );
+        assert_eq!(test.file_name, "resource_akeyless_role_test.go");
+    }
+
+    // --- Multiple sensitive fields ---
+
+    #[test]
+    fn generate_test_multiple_sensitive_fields() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_creds"
+description = "Creds"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "C"
+read_endpoint = "/read"
+read_schema = "R"
+delete_endpoint = "/delete"
+delete_schema = "D"
+
+[identity]
+id_field = "name"
+
+[fields]
+password = { sensitive = true }
+api_key = { sensitive = true }
+token = { sensitive = true }
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(test.go_code.contains("ImportStateVerifyIgnore"));
+        assert!(test.go_code.contains("\"password\""));
+        assert!(test.go_code.contains("\"api_key\""));
+        assert!(test.go_code.contains("\"token\""));
+    }
+
+    // --- Resource without akeyless_ prefix ---
+
+    #[test]
+    fn generate_test_no_prefix() {
+        let toml_str = r#"
+[resource]
+name = "custom_resource"
+description = "Custom"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "C"
+read_endpoint = "/read"
+read_schema = "R"
+delete_endpoint = "/delete"
+delete_schema = "D"
+
+[identity]
+id_field = "id"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(test.go_code.contains("TestAccCustomResource_basic"));
+        assert!(test.go_code.contains("custom_resource"));
+        assert_eq!(test.file_name, "resource_custom_resource_test.go");
+    }
+
+    // --- Test scaffold structure ---
+
+    #[test]
+    fn generate_test_has_package_declaration() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_thing"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "C"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(test.go_code.contains("package resources_test"));
+    }
+
+    #[test]
+    fn generate_test_has_imports() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_thing"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "C"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(test.go_code.contains("\"testing\""));
+        assert!(test.go_code.contains("acctest.RandStringFromCharSet"));
+    }
+
+    #[test]
+    fn generate_test_has_todo_for_required_fields() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_thing"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "C"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(test.go_code.contains("# TODO: Add required fields"));
+    }
+
+    #[test]
+    fn generate_test_uses_id_field_in_check() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_item"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "C"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "path"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(
+            test.go_code.contains("\"path\", rName"),
+            "TestCheckResourceAttr should use the id_field"
+        );
+        assert!(test.go_code.contains("path = \"%s\""));
+    }
+
+    #[test]
+    fn generate_test_has_import_state_step() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_thing"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "C"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let test = generate_test(&resource);
+        assert!(test.go_code.contains("ImportState:       true"));
+        assert!(test.go_code.contains("ImportStateVerify: true"));
+    }
 }
