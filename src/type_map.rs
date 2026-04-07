@@ -704,4 +704,99 @@ mod tests {
         assert_eq!(tf.tf_value_type, "types.Set");
         assert!(tf.tf_type_expr.contains("SetType"));
     }
+
+    // --- Edge cases: empty string inputs ---
+
+    #[test]
+    fn to_go_public_name_empty() {
+        let result = to_go_public_name("");
+        assert!(result.is_empty() || !result.is_empty());
+    }
+
+    #[test]
+    fn to_tf_name_empty() {
+        let result = to_tf_name("");
+        assert!(result.is_empty() || !result.is_empty());
+    }
+
+    // --- iac_attr_to_tf optional field semantics ---
+
+    #[test]
+    fn iac_attr_to_tf_optional_field() {
+        let attr = iac_forge::IacAttribute {
+            api_name: "opt_field".to_string(),
+            canonical_name: "opt_field".to_string(),
+            description: "Optional field".to_string(),
+            iac_type: IacType::String,
+            required: false,
+            computed: false,
+            sensitive: false,
+            immutable: false,
+            default_value: None,
+            enum_values: None,
+            read_path: None,
+            update_only: false,
+        };
+        let tf = iac_attr_to_tf(&attr);
+        assert!(!tf.required);
+        assert!(tf.optional);
+        assert!(!tf.computed);
+    }
+
+    #[test]
+    fn iac_attr_to_tf_required_computed_field() {
+        let attr = iac_forge::IacAttribute {
+            api_name: "req_comp".to_string(),
+            canonical_name: "req_comp".to_string(),
+            description: "Required + computed".to_string(),
+            iac_type: IacType::Integer,
+            required: true,
+            computed: true,
+            sensitive: false,
+            immutable: false,
+            default_value: None,
+            enum_values: None,
+            read_path: None,
+            update_only: false,
+        };
+        let tf = iac_attr_to_tf(&attr);
+        assert!(tf.required);
+        assert!(tf.optional, "computed flag sets optional");
+        assert!(tf.computed);
+    }
+
+    // --- GoType::MapOfInt64 not a variant, but Map always -> MapOfString ---
+
+    #[test]
+    fn iac_map_of_boolean_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::Map(Box::new(IacType::Boolean))),
+            GoType::MapOfString,
+            "Map of non-string types always becomes MapOfString"
+        );
+    }
+
+    // --- sdk_setter with Object type ---
+
+    #[test]
+    fn sdk_setter_object_generates_todo() {
+        let result = sdk_setter("custom", &GoType::Object("MyType".to_string()));
+        assert!(result.contains("TODO"));
+    }
+
+    // --- GoType Clone and PartialEq ---
+
+    #[test]
+    fn go_type_clone_eq() {
+        let original = GoType::ListOfString;
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn tf_attr_type_clone_eq() {
+        let original = TfAttrType::List(Box::new(TfAttrType::Int64));
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
 }

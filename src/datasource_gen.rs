@@ -753,4 +753,77 @@ components:
             "Should use first optional string field 'path' as id"
         );
     }
+
+    // --- Error paths ---
+
+    #[test]
+    fn generate_datasource_attributes_missing_schema_errors() {
+        let toml_str = r#"
+[data_source]
+name = "test_ds"
+description = "Test"
+
+[read]
+endpoint = "/get"
+schema = "NonExistentSchema"
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths: {}
+components:
+  schemas: {}
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let result = generate_datasource_attributes(&ds, &api, &ProviderDefaults::default());
+        assert!(result.is_err(), "Missing schema should error");
+    }
+
+    #[test]
+    fn generate_datasource_missing_schema_errors() {
+        let toml_str = r#"
+[data_source]
+name = "test_ds"
+description = "Test"
+
+[read]
+endpoint = "/get"
+schema = "NonExistentSchema"
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths: {}
+components:
+  schemas: {}
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let result = generate_datasource(&ds, &api, &ProviderDefaults::default(), "sdk");
+        assert!(result.is_err(), "Missing schema should error");
+    }
+
+    // --- Data source description override ---
+
+    #[test]
+    fn datasource_field_description_override() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_ds"
+description = "DS"
+
+[read]
+endpoint = "/get-auth-method"
+schema = "GetAuthMethod"
+
+[fields]
+name = { description = "Custom name desc" }
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, defaults) = make_ds_test_data();
+        let attrs = generate_datasource_attributes(&ds, &api, &defaults).expect("gen");
+        let name_attr = attrs.iter().find(|a| a.tf_name == "name").expect("name");
+        assert_eq!(name_attr.description, "Custom name desc");
+    }
 }
