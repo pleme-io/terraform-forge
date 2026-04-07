@@ -7,7 +7,7 @@ use crate::spec::{ProviderDefaults, ResourceSpec};
 use crate::type_map::{go_to_tf_attr, openapi_to_go, tf_value_type, to_go_public_name, to_tf_name};
 
 /// A resolved TF schema attribute ready for code generation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct TfAttribute {
     pub tf_name: String,
@@ -22,6 +22,31 @@ pub struct TfAttribute {
     pub tf_value_type: String,
     pub go_type: String,
     pub default_value: Option<String>,
+}
+
+impl TfAttribute {
+    /// Create a minimal `TfAttribute` for the given name and Go type.
+    ///
+    /// All boolean flags default to `false`; callers can mutate fields
+    /// after construction for specific test scenarios.
+    #[must_use]
+    pub fn new(tf_name: &str, go_type: &crate::type_map::GoType) -> Self {
+        let tf_type = crate::type_map::go_to_tf_attr(go_type);
+        Self {
+            tf_name: tf_name.to_string(),
+            go_name: crate::type_map::to_go_public_name(tf_name),
+            description: String::new(),
+            required: false,
+            optional: false,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: tf_type.to_string(),
+            tf_value_type: crate::type_map::tf_value_type(go_type).to_string(),
+            go_type: go_type.to_string(),
+            default_value: None,
+        }
+    }
 }
 
 /// Generate TF schema attributes from a resource spec + `OpenAPI` spec.
@@ -118,9 +143,8 @@ pub fn render_schema_attributes(attrs: &[TfAttribute]) -> String {
     out.push_str("\tresp.Schema = schema.Schema{\n");
     out.push_str("\t\tAttributes: map[string]schema.Attribute{\n");
 
-    for attr in attrs {
-        out.push_str(&render_single_attribute(attr));
-    }
+    let attr_code: String = attrs.iter().map(render_single_attribute).collect();
+    out.push_str(&attr_code);
 
     out.push_str("\t\t},\n");
     out.push_str("\t}\n");
@@ -171,7 +195,7 @@ fn plan_modifier_for_attr(attr: &TfAttribute) -> (&'static str, &'static str) {
     }
 }
 
-fn render_single_attribute(attr: &TfAttribute) -> String {
+pub(crate) fn render_single_attribute(attr: &TfAttribute) -> String {
     let mut out = String::new();
     let indent = "\t\t\t";
 
@@ -1015,6 +1039,37 @@ components:
         }];
         let code = render_model_struct("Res", &attrs);
         assert!(code.contains("MyField types.Int64 `tfsdk:\"my_field\"`"));
+    }
+
+    // --- TfAttribute::new constructor ---
+
+    #[test]
+    fn tf_attribute_new_string() {
+        let attr = TfAttribute::new("my_field", &crate::type_map::GoType::String);
+        assert_eq!(attr.tf_name, "my_field");
+        assert_eq!(attr.go_name, "MyField");
+        assert_eq!(attr.go_type, "string");
+        assert_eq!(attr.tf_value_type, "types.String");
+        assert!(!attr.required);
+        assert!(!attr.computed);
+        assert!(!attr.sensitive);
+        assert!(!attr.force_new);
+        assert!(attr.default_value.is_none());
+    }
+
+    #[test]
+    fn tf_attribute_new_list_of_string() {
+        let attr = TfAttribute::new("tags", &crate::type_map::GoType::ListOfString);
+        assert_eq!(attr.go_type, "[]string");
+        assert_eq!(attr.tf_value_type, "types.Set");
+        assert!(attr.tf_type_expr.contains("SetType"));
+    }
+
+    #[test]
+    fn tf_attribute_partial_eq() {
+        let a = TfAttribute::new("name", &crate::type_map::GoType::String);
+        let b = TfAttribute::new("name", &crate::type_map::GoType::String);
+        assert_eq!(a, b);
     }
 
     // --- Description override from field config ---

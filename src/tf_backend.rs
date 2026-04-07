@@ -5,7 +5,7 @@ use iac_forge::ir::{IacDataSource, IacProvider, IacResource};
 use iac_forge::naming::{strip_provider_prefix, to_pascal_case, to_snake_case};
 use iac_forge::IacForgeError;
 
-use crate::resource_gen::render_read_mapping_code;
+use crate::resource_gen::{render_imports, render_read_mapping_code};
 use crate::schema_gen::{render_model_struct, render_schema_attributes};
 use crate::type_map::iac_attr_to_tf;
 
@@ -93,7 +93,7 @@ impl Backend for TerraformBackend {
         let mut code = String::new();
 
         // Imports
-        code.push_str(&render_tf_imports(
+        code.push_str(&render_imports(
             &type_name,
             &self.sdk_import,
             &attrs,
@@ -234,24 +234,38 @@ impl Backend for TerraformBackend {
 /// Includes ALL attributes (not just flagged ones) so that test generation
 /// and other consumers have the complete field set available.
 fn ir_to_resource_spec(resource: &IacResource) -> crate::spec::ResourceSpec {
-    let mut fields = std::collections::BTreeMap::new();
-    for attr in &resource.attributes {
-        fields.insert(
-            attr.api_name.clone(),
-            crate::spec::FieldOverride {
-                computed: attr.computed,
-                sensitive: attr.sensitive,
-                skip: false,
-                type_override: None,
-                description: if attr.description.is_empty() {
-                    None
-                } else {
-                    Some(attr.description.clone())
+    let fields = resource
+        .attributes
+        .iter()
+        .map(|attr| {
+            let desc = if attr.description.is_empty() {
+                None
+            } else {
+                Some(attr.description.clone())
+            };
+            (
+                attr.api_name.clone(),
+                crate::spec::FieldOverride {
+                    computed: attr.computed,
+                    sensitive: attr.sensitive,
+                    skip: false,
+                    type_override: None,
+                    description: desc,
+                    force_new: attr.immutable,
                 },
-                force_new: attr.immutable,
-            },
-        );
-    }
+            )
+        })
+        .collect();
+
+    let read_mapping = resource
+        .attributes
+        .iter()
+        .filter_map(|a| {
+            a.read_path
+                .as_ref()
+                .map(|rp| (rp.clone(), a.canonical_name.clone()))
+        })
+        .collect();
 
     crate::spec::ResourceSpec {
         resource: crate::spec::ResourceMeta {
@@ -276,120 +290,10 @@ fn ir_to_resource_spec(resource: &IacResource) -> crate::spec::ResourceSpec {
             force_new_fields: resource.identity.force_replace_fields.clone(),
         },
         fields,
-        read_mapping: resource
-            .attributes
-            .iter()
-            .filter_map(|a| {
-                a.read_path
-                    .as_ref()
-                    .map(|rp| (rp.clone(), a.canonical_name.clone()))
-            })
-            .collect(),
+        read_mapping,
     }
 }
 
-/// Render Go imports for a TF resource.
-///
-/// Matches the conditional import logic from `resource_gen::render_imports()`,
-/// including type-specific plan modifiers for Int64, Bool, Float64, Set, and List.
-fn render_tf_imports(
-    type_name: &str,
-    sdk_import: &str,
-    attrs: &[crate::schema_gen::TfAttribute],
-) -> String {
-    let needs_strconv = attrs
-        .iter()
-        .any(|a| a.tf_value_type == "types.Int64" || a.tf_value_type == "types.Float64");
-
-    let needs_int64_planmod = attrs
-        .iter()
-        .any(|a| a.force_new && a.tf_value_type == "types.Int64");
-    let needs_bool_planmod = attrs
-        .iter()
-        .any(|a| a.force_new && a.tf_value_type == "types.Bool");
-    let needs_float64_planmod = attrs
-        .iter()
-        .any(|a| a.force_new && a.tf_value_type == "types.Float64");
-    let needs_set_planmod = attrs
-        .iter()
-        .any(|a| a.force_new && a.tf_value_type == "types.Set");
-    let needs_list_planmod = attrs
-        .iter()
-        .any(|a| a.force_new && a.tf_value_type == "types.List");
-    let has_force_new = attrs.iter().any(|a| a.force_new);
-
-    let mut stdlib = String::new();
-    stdlib.push_str("\t\"context\"\n");
-    stdlib.push_str("\t\"fmt\"\n");
-    if needs_strconv {
-        stdlib.push_str("\t\"strconv\"\n");
-    }
-
-    let mut framework = String::new();
-    framework.push_str("\t\"github.com/hashicorp/terraform-plugin-framework/diag\"\n");
-    framework.push_str("\t\"github.com/hashicorp/terraform-plugin-framework/path\"\n");
-    framework.push_str("\t\"github.com/hashicorp/terraform-plugin-framework/resource\"\n");
-    framework.push_str(
-        "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema\"\n",
-    );
-    if has_force_new {
-        framework.push_str(
-            "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier\"\n",
-        );
-        if needs_bool_planmod {
-            framework.push_str(
-                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier\"\n",
-            );
-        }
-        if needs_float64_planmod {
-            framework.push_str(
-                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier\"\n",
-            );
-        }
-        if needs_int64_planmod {
-            framework.push_str(
-                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier\"\n",
-            );
-        }
-        if needs_list_planmod {
-            framework.push_str(
-                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier\"\n",
-            );
-        }
-        if needs_set_planmod {
-            framework.push_str(
-                "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier\"\n",
-            );
-        }
-        // Always include string plan modifier if any force_new field exists,
-        // since string is the most common type
-        framework.push_str(
-            "\t\"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier\"\n",
-        );
-    }
-    framework.push_str("\t\"github.com/hashicorp/terraform-plugin-framework/types\"\n");
-    framework.push_str("\t\"github.com/hashicorp/terraform-plugin-log/tflog\"\n");
-
-    format!(
-        r#"// Code generated by iac-forge (terraform backend). DO NOT EDIT.
-
-package resources
-
-import (
-{stdlib}
-{framework}
-	akeyless_api "{sdk_import}"
-)
-
-var (
-	_ resource.Resource                = &{type_name}Resource{{}}
-	_ resource.ResourceWithConfigure   = &{type_name}Resource{{}}
-	_ resource.ResourceWithImportState = &{type_name}Resource{{}}
-)
-
-"#
-    )
-}
 
 #[cfg(test)]
 mod tests {

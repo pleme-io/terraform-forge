@@ -5,12 +5,15 @@ use openapi_forge::Spec;
 
 use crate::error::ForgeError;
 use crate::resource_gen::render_read_mapping_code;
-use crate::schema_gen::TfAttribute;
+use crate::schema_gen::{TfAttribute, render_single_attribute};
 use crate::spec::{DataSourceSpec, ProviderDefaults};
-use crate::type_map::{go_to_tf_attr, openapi_to_go, tf_value_type, to_go_public_name, to_tf_name};
+use crate::type_map::{
+    go_to_tf_attr, openapi_to_go, tf_value_type, to_go_public_name, to_tf_name, to_type_name,
+};
 
 /// Generated Go source for a complete TF data source.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct GeneratedDataSource {
     pub file_name: String,
     pub go_code: String,
@@ -103,12 +106,7 @@ pub fn generate_datasource(
 ) -> Result<GeneratedDataSource, ForgeError> {
     let attrs = generate_datasource_attributes(ds, api, defaults)?;
 
-    let type_name = meimei::to_pascal_case(
-        ds.data_source
-            .name
-            .strip_prefix("akeyless_")
-            .unwrap_or(&ds.data_source.name),
-    );
+    let type_name = to_type_name(&ds.data_source.name);
 
     let file_name = format!("datasource_{}.go", to_tf_name(&ds.data_source.name));
 
@@ -181,20 +179,18 @@ fn render_ds_model(type_name: &str, attrs: &[TfAttribute]) -> String {
     let struct_name = format!("{type_name}DataSourceModel");
     let mut out = String::new();
     let _ = writeln!(out, "type {struct_name} struct {{");
-    for attr in attrs {
-        let _ = writeln!(
-            out,
-            "\t{} {} `tfsdk:\"{}\"`",
-            attr.go_name, attr.tf_value_type, attr.tf_name
-        );
-    }
+    let fields: String = attrs
+        .iter()
+        .map(|a| format!("\t{} {} `tfsdk:\"{}\"`\n", a.go_name, a.tf_value_type, a.tf_name))
+        .collect();
+    out.push_str(&fields);
     out.push_str("}\n");
     out
 }
 
 fn render_ds_metadata(ds_name: &str) -> String {
     let suffix = ds_name.strip_prefix("akeyless_").unwrap_or(ds_name);
-    let type_name = meimei::to_pascal_case(suffix);
+    let type_name = to_type_name(ds_name);
     format!(
         r#"func (d *{type_name}DataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {{
 	resp.TypeName = req.ProviderTypeName + "_{suffix}"
@@ -212,48 +208,12 @@ fn render_ds_schema(attrs: &[TfAttribute], description: &str) -> String {
     let _ = writeln!(out, "\t\tDescription: \"{desc}\",");
     out.push_str("\t\tAttributes: map[string]schema.Attribute{\n");
 
-    for attr in attrs {
-        out.push_str(&render_ds_single_attribute(attr));
-    }
+    let attr_code: String = attrs.iter().map(render_single_attribute).collect();
+    out.push_str(&attr_code);
 
     out.push_str("\t\t},\n");
     out.push_str("\t}\n");
     out.push_str("}\n");
-    out
-}
-
-fn render_ds_single_attribute(attr: &TfAttribute) -> String {
-    let mut out = String::new();
-    let indent = "\t\t\t";
-
-    let attr_kind = crate::schema_gen::tf_schema_attr_kind(&attr.tf_value_type);
-
-    let _ = writeln!(out, "{indent}\"{}\": {attr_kind}{{", attr.tf_name);
-
-    let desc = attr.description.replace('"', "\\\"");
-    let _ = writeln!(out, "{indent}\tDescription: \"{desc}\",");
-
-    if attr.optional && attr.computed {
-        let _ = writeln!(out, "{indent}\tOptional: true,");
-        let _ = writeln!(out, "{indent}\tComputed: true,");
-    } else if attr.computed {
-        let _ = writeln!(out, "{indent}\tComputed: true,");
-    } else {
-        let _ = writeln!(out, "{indent}\tOptional: true,");
-    }
-
-    if attr.sensitive {
-        let _ = writeln!(out, "{indent}\tSensitive: true,");
-    }
-
-    if attr.tf_value_type.contains("Set")
-        || attr.tf_value_type.contains("List")
-        || attr.tf_value_type.contains("Map")
-    {
-        let _ = writeln!(out, "{indent}\tElementType: types.StringType{{}},");
-    }
-
-    let _ = writeln!(out, "{indent}}},");
     out
 }
 

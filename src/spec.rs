@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::ForgeError;
 
 /// Top-level resource specification loaded from TOML.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceSpec {
     pub resource: ResourceMeta,
     pub crud: CrudMapping,
@@ -18,7 +18,7 @@ pub struct ResourceSpec {
 }
 
 /// Resource metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceMeta {
     pub name: String,
     #[serde(default)]
@@ -28,7 +28,7 @@ pub struct ResourceMeta {
 }
 
 /// Maps CRUD operations to API endpoints and schemas.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrudMapping {
     pub create_endpoint: String,
     pub create_schema: String,
@@ -45,7 +45,7 @@ pub struct CrudMapping {
 }
 
 /// Identity and import configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentityConfig {
     pub id_field: String,
     #[serde(default)]
@@ -55,7 +55,7 @@ pub struct IdentityConfig {
 }
 
 /// Per-field overrides in the resource spec.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct FieldOverride {
     #[serde(default)]
@@ -73,7 +73,7 @@ pub struct FieldOverride {
 }
 
 /// Provider-level configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderSpec {
     pub provider: ProviderMeta,
     #[serde(default)]
@@ -83,7 +83,7 @@ pub struct ProviderSpec {
 }
 
 /// Provider metadata (name, description, version, SDK import).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderMeta {
     pub name: String,
     #[serde(default)]
@@ -95,7 +95,7 @@ pub struct ProviderMeta {
 }
 
 /// Provider authentication configuration (token field, environment variables).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthConfig {
     #[serde(default)]
     pub token_field: String,
@@ -108,7 +108,7 @@ pub struct AuthConfig {
 }
 
 /// Provider-level default settings (fields to skip globally).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderDefaults {
     #[serde(default)]
     pub skip_fields: Vec<String>,
@@ -178,7 +178,7 @@ impl ProviderSpec {
 }
 
 /// Top-level data source specification loaded from TOML.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataSourceSpec {
     pub data_source: DataSourceMeta,
     pub read: ReadMapping,
@@ -189,7 +189,7 @@ pub struct DataSourceSpec {
 }
 
 /// Data source metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataSourceMeta {
     pub name: String,
     #[serde(default)]
@@ -197,7 +197,7 @@ pub struct DataSourceMeta {
 }
 
 /// Maps a read operation to an API endpoint and schema.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReadMapping {
     pub endpoint: String,
     pub schema: String,

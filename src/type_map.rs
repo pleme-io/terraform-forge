@@ -2,8 +2,10 @@ use iac_forge::IacType;
 use openapi_forge::TypeInfo;
 
 /// Go type representation for code generation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum GoType {
+    #[default]
     String,
     Int64,
     Float64,
@@ -17,8 +19,10 @@ pub enum GoType {
 }
 
 /// Terraform framework attribute type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum TfAttrType {
+    #[default]
     String,
     Int64,
     Float64,
@@ -26,6 +30,25 @@ pub enum TfAttrType {
     List(Box<TfAttrType>),
     Set(Box<TfAttrType>),
     Map(Box<TfAttrType>),
+}
+
+impl std::str::FromStr for GoType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "string" => Ok(Self::String),
+            "int64" => Ok(Self::Int64),
+            "float64" => Ok(Self::Float64),
+            "bool" => Ok(Self::Bool),
+            "[]string" => Ok(Self::ListOfString),
+            "[]int64" => Ok(Self::ListOfInt64),
+            "[]float64" => Ok(Self::ListOfFloat64),
+            "[]bool" => Ok(Self::ListOfBool),
+            "map[string]string" => Ok(Self::MapOfString),
+            other => Ok(Self::Object(other.to_string())),
+        }
+    }
 }
 
 impl std::fmt::Display for GoType {
@@ -73,6 +96,7 @@ pub fn openapi_to_go(type_info: &TypeInfo, type_override: Option<&str>) -> GoTyp
     }
 
     match type_info {
+        TypeInfo::String | TypeInfo::Any => GoType::String,
         TypeInfo::Integer => GoType::Int64,
         TypeInfo::Number => GoType::Float64,
         TypeInfo::Boolean => GoType::Bool,
@@ -84,7 +108,6 @@ pub fn openapi_to_go(type_info: &TypeInfo, type_override: Option<&str>) -> GoTyp
         },
         TypeInfo::Map(_) => GoType::MapOfString,
         TypeInfo::Object(name) => GoType::Object(name.clone()),
-        TypeInfo::String | TypeInfo::Any => GoType::String,
     }
 }
 
@@ -92,6 +115,7 @@ pub fn openapi_to_go(type_info: &TypeInfo, type_override: Option<&str>) -> GoTyp
 #[must_use]
 pub fn go_to_tf_attr(go_type: &GoType) -> TfAttrType {
     match go_type {
+        GoType::String | GoType::Object(_) => TfAttrType::String,
         GoType::Int64 => TfAttrType::Int64,
         GoType::Float64 => TfAttrType::Float64,
         GoType::Bool => TfAttrType::Bool,
@@ -100,7 +124,6 @@ pub fn go_to_tf_attr(go_type: &GoType) -> TfAttrType {
         GoType::ListOfFloat64 => TfAttrType::List(Box::new(TfAttrType::Float64)),
         GoType::ListOfBool => TfAttrType::List(Box::new(TfAttrType::Bool)),
         GoType::MapOfString => TfAttrType::Map(Box::new(TfAttrType::String)),
-        GoType::String | GoType::Object(_) => TfAttrType::String,
     }
 }
 
@@ -108,6 +131,7 @@ pub fn go_to_tf_attr(go_type: &GoType) -> TfAttrType {
 #[must_use]
 pub fn tf_value_type(go_type: &GoType) -> &'static str {
     match go_type {
+        GoType::String | GoType::Object(_) => "types.String",
         GoType::Int64 => "types.Int64",
         GoType::Float64 => "types.Float64",
         GoType::Bool => "types.Bool",
@@ -115,7 +139,6 @@ pub fn tf_value_type(go_type: &GoType) -> &'static str {
             "types.Set"
         }
         GoType::MapOfString => "types.Map",
-        GoType::String | GoType::Object(_) => "types.String",
     }
 }
 
@@ -135,7 +158,7 @@ pub fn sdk_setter(field_name: &str, go_type: &GoType) -> String {
     }
 }
 
-/// Convert a hyphenated/`snake_case` field name to Go public name.
+/// Convert a hyphenated / `snake_case` field name to Go public name.
 ///
 /// Examples: `bound-aws-account-id` -> `BoundAwsAccountId`,
 ///           `access_expires` -> `AccessExpires`
@@ -150,10 +173,19 @@ pub fn to_tf_name(name: &str) -> String {
     meimei::to_snake_case(name)
 }
 
+/// Strip the `akeyless_` prefix (or any `<provider>_` prefix) and convert
+/// to `PascalCase`.  Used for Go type names like `StaticSecret` from
+/// `akeyless_static_secret`.
+#[must_use]
+pub fn to_type_name(name: &str) -> String {
+    meimei::to_pascal_case(name.strip_prefix("akeyless_").unwrap_or(name))
+}
+
 /// Convert a platform-independent `IacType` to a Go type.
 impl From<&IacType> for GoType {
     fn from(iac: &IacType) -> Self {
         match iac {
+            IacType::String | IacType::Any => Self::String,
             IacType::Integer => Self::Int64,
             IacType::Float => Self::Float64,
             IacType::Boolean => Self::Bool,
@@ -166,7 +198,6 @@ impl From<&IacType> for GoType {
             IacType::Map(_) => Self::MapOfString,
             IacType::Object { name, .. } => Self::Object(name.clone()),
             IacType::Enum { underlying, .. } => Self::from(underlying.as_ref()),
-            IacType::String | IacType::Any => Self::String,
         }
     }
 }
@@ -655,6 +686,54 @@ mod tests {
         assert_eq!(tf.tf_value_type, "types.String");
         assert_eq!(tf.tf_type_expr, "types.StringType");
         assert!(tf.default_value.is_none());
+    }
+
+    #[test]
+    fn to_type_name_strips_akeyless_prefix() {
+        assert_eq!(to_type_name("akeyless_static_secret"), "StaticSecret");
+        assert_eq!(to_type_name("custom_thing"), "CustomThing");
+        assert_eq!(to_type_name("akeyless_auth_method"), "AuthMethod");
+    }
+
+    #[test]
+    fn go_type_default_is_string() {
+        assert_eq!(GoType::default(), GoType::String);
+    }
+
+    #[test]
+    fn tf_attr_type_default_is_string() {
+        assert_eq!(TfAttrType::default(), TfAttrType::String);
+    }
+
+    #[test]
+    fn go_type_from_str_roundtrip() {
+        let variants = [
+            GoType::String,
+            GoType::Int64,
+            GoType::Float64,
+            GoType::Bool,
+            GoType::ListOfString,
+            GoType::ListOfInt64,
+            GoType::ListOfFloat64,
+            GoType::ListOfBool,
+            GoType::MapOfString,
+            GoType::Object("CustomType".to_string()),
+        ];
+        for variant in &variants {
+            let s = variant.to_string();
+            let parsed: GoType = s.parse().unwrap();
+            assert_eq!(&parsed, variant, "FromStr round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn go_type_hash_works() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(GoType::String);
+        set.insert(GoType::Int64);
+        set.insert(GoType::String);
+        assert_eq!(set.len(), 2);
     }
 
     #[test]

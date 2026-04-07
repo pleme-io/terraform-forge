@@ -1,25 +1,19 @@
 use std::fmt::Write as _;
 
 use crate::spec::ResourceSpec;
-use crate::type_map::to_tf_name;
+use crate::type_map::{to_tf_name, to_type_name};
 
 /// Generated acceptance test file for a resource.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct GeneratedTest {
     pub file_name: String,
     pub go_code: String,
 }
 
 /// Generate acceptance test scaffolding for a resource.
-#[must_use]
 pub fn generate_test(resource: &ResourceSpec) -> GeneratedTest {
-    let type_name = meimei::to_pascal_case(
-        resource
-            .resource
-            .name
-            .strip_prefix("akeyless_")
-            .unwrap_or(&resource.resource.name),
-    );
+    let type_name = to_type_name(&resource.resource.name);
 
     let tf_name = &resource.resource.name;
     let file_name = format!("resource_{}_test.go", to_tf_name(tf_name));
@@ -72,14 +66,14 @@ func TestAcc{type_name}_basic(t *testing.T) {{
         .collect();
 
     if !sensitive_fields.is_empty() {
-        code.push_str("\t\t\t\tImportStateVerifyIgnore: []string{");
-        for (i, field) in sensitive_fields.iter().enumerate() {
-            if i > 0 {
-                code.push_str(", ");
-            }
-            let _ = write!(code, "\"{}\"", to_tf_name(field));
-        }
-        code.push_str("},\n");
+        let quoted: Vec<String> = sensitive_fields
+            .iter()
+            .map(|f| format!("\"{}\"", to_tf_name(f)))
+            .collect();
+        code.push_str(&format!(
+            "\t\t\t\tImportStateVerifyIgnore: []string{{{}}},\n",
+            quoted.join(", ")
+        ));
     }
 
     let _ = write!(
