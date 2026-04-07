@@ -6,7 +6,9 @@ use crate::error::ForgeError;
 use crate::resource_gen::render_read_mapping_code;
 use crate::schema_gen::TfAttribute;
 use crate::spec::{DataSourceSpec, ProviderDefaults};
-use crate::type_map::{go_to_tf_attr, openapi_to_go, tf_value_type, to_go_public_name, to_tf_name};
+use crate::type_map::{
+    go_to_tf_attr, openapi_to_go, tf_value_type, to_go_public_name, to_tf_name, to_type_name,
+};
 
 /// Generated Go source for a complete TF data source.
 #[derive(Debug, Clone)]
@@ -102,12 +104,7 @@ pub fn generate_datasource(
 ) -> Result<GeneratedDataSource, ForgeError> {
     let attrs = generate_datasource_attributes(ds, api, defaults)?;
 
-    let type_name = meimei::to_pascal_case(
-        ds.data_source
-            .name
-            .strip_prefix("akeyless_")
-            .unwrap_or(&ds.data_source.name),
-    );
+    let type_name = to_type_name(&ds.data_source.name);
 
     let file_name = format!("datasource_{}.go", to_tf_name(&ds.data_source.name));
 
@@ -192,7 +189,7 @@ fn render_ds_model(type_name: &str, attrs: &[TfAttribute]) -> String {
 
 fn render_ds_metadata(ds_name: &str) -> String {
     let suffix = ds_name.strip_prefix("akeyless_").unwrap_or(ds_name);
-    let type_name = meimei::to_pascal_case(suffix);
+    let type_name = to_type_name(ds_name);
     format!(
         r#"func (d *{type_name}DataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {{
 	resp.TypeName = req.ProviderTypeName + "_{suffix}"

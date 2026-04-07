@@ -190,6 +190,14 @@ pub fn to_tf_name(name: &str) -> String {
     meimei::to_snake_case(name)
 }
 
+/// Strip the `akeyless_` prefix (or any `<provider>_` prefix) and convert
+/// to `PascalCase`.  Used for Go type names like `StaticSecret` from
+/// `akeyless_static_secret`.
+#[must_use]
+pub fn to_type_name(name: &str) -> String {
+    meimei::to_pascal_case(name.strip_prefix("akeyless_").unwrap_or(name))
+}
+
 /// Convert a platform-independent `IacType` to a Go type.
 impl From<&IacType> for GoType {
     fn from(iac: &IacType) -> Self {
@@ -704,6 +712,13 @@ mod tests {
         assert_eq!(tf.tf_value_type, "types.String");
         assert_eq!(tf.tf_type_expr, "types.StringType");
         assert!(tf.default_value.is_none());
+    }
+
+    #[test]
+    fn to_type_name_strips_akeyless_prefix() {
+        assert_eq!(to_type_name("akeyless_static_secret"), "StaticSecret");
+        assert_eq!(to_type_name("custom_thing"), "CustomThing");
+        assert_eq!(to_type_name("akeyless_auth_method"), "AuthMethod");
     }
 
     #[test]

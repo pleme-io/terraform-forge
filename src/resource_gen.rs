@@ -5,7 +5,7 @@ use crate::schema_gen::{
     TfAttribute, generate_schema_attributes, render_model_struct, render_schema_attributes,
 };
 use crate::spec::{ProviderDefaults, ResourceSpec};
-use crate::type_map::{to_go_public_name, to_tf_name};
+use crate::type_map::{to_go_public_name, to_tf_name, to_type_name};
 
 /// Generated Go source for a complete TF resource.
 #[derive(Debug, Clone)]
@@ -28,14 +28,7 @@ pub fn generate_resource(
 ) -> Result<GeneratedResource, ForgeError> {
     let attrs = generate_schema_attributes(resource, api, defaults)?;
 
-    // Resource type name: akeyless_static_secret -> StaticSecret
-    let type_name = meimei::to_pascal_case(
-        resource
-            .resource
-            .name
-            .strip_prefix("akeyless_")
-            .unwrap_or(&resource.resource.name),
-    );
+    let type_name = to_type_name(&resource.resource.name);
 
     let file_name = format!("resource_{}.go", to_tf_name(&resource.resource.name));
 
@@ -222,20 +215,16 @@ func New{type_name}Resource() resource.Resource {{
 }
 
 fn render_metadata(resource_name: &str) -> String {
+    let type_name = to_type_name(resource_name);
+    let suffix = resource_name
+        .strip_prefix("akeyless_")
+        .unwrap_or(resource_name);
     format!(
         r#"func (r *{type_name}Resource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {{
 	resp.TypeName = req.ProviderTypeName + "_{suffix}"
 }}
 
 "#,
-        type_name = meimei::to_pascal_case(
-            resource_name
-                .strip_prefix("akeyless_")
-                .unwrap_or(resource_name)
-        ),
-        suffix = resource_name
-            .strip_prefix("akeyless_")
-            .unwrap_or(resource_name),
     )
 }
 

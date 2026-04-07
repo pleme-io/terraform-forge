@@ -25,5 +25,5 @@ pub use test_gen::{GeneratedTest, generate_test};
 pub use tf_backend::TerraformBackend;
 pub use type_map::{
     GoType, TfAttrType, go_to_tf_attr, iac_attr_to_tf, openapi_to_go, sdk_setter, tf_value_type,
-    to_go_public_name, to_tf_name,
+    to_go_public_name, to_tf_name, to_type_name,
 };
