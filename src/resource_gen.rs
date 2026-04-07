@@ -272,10 +272,10 @@ fn render_create(type_name: &str, endpoint: &str, attrs: &[TfAttribute], id_fiel
         if attr.computed && !attr.optional {
             continue;
         }
-        let _ = write!(setters, "\n\t// Set {}\n", attr.tf_name);
-        let _ = write!(
+        let _ = writeln!(setters, "\n\t// Set {}", attr.tf_name);
+        let _ = writeln!(
             setters,
-            "\tif !plan.{go}.IsNull() && !plan.{go}.IsUnknown() {{\n",
+            "\tif !plan.{go}.IsNull() && !plan.{go}.IsUnknown() {{",
             go = attr.go_name
         );
         setters.push_str(&render_setter("body", &attr.go_name, &attr.tf_value_type));
@@ -468,9 +468,9 @@ fn render_update(type_name: &str, endpoint: &str, attrs: &[TfAttribute]) -> Stri
         if attr.computed && !attr.optional {
             continue;
         }
-        let _ = write!(
+        let _ = writeln!(
             setters,
-            "\tif !plan.{go}.IsNull() && !plan.{go}.IsUnknown() {{\n",
+            "\tif !plan.{go}.IsNull() && !plan.{go}.IsUnknown() {{",
             go = attr.go_name
         );
         setters.push_str(&render_setter("body", &attr.go_name, &attr.tf_value_type));
