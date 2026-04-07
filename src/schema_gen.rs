@@ -1080,4 +1080,205 @@ components:
         let name_attr = attrs.iter().find(|a| a.tf_name == "name").expect("name");
         assert_eq!(name_attr.description, "Custom description");
     }
+
+    // --- generate_schema_attributes error path ---
+
+    #[test]
+    fn generate_schema_attributes_missing_schema_errors() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "NonExistentSchema"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths: {}
+components:
+  schemas:
+    R:
+      type: object
+      properties:
+        name: { type: string }
+    D:
+      type: object
+      properties:
+        name: { type: string }
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let result = generate_schema_attributes(&resource, &api, &ProviderDefaults::default());
+        assert!(result.is_err(), "Missing create schema should error");
+    }
+
+    // --- tf_schema_attr_kind unit tests ---
+
+    #[test]
+    fn tf_schema_attr_kind_all_types() {
+        assert_eq!(tf_schema_attr_kind("types.String"), "schema.StringAttribute");
+        assert_eq!(tf_schema_attr_kind("types.Int64"), "schema.Int64Attribute");
+        assert_eq!(
+            tf_schema_attr_kind("types.Float64"),
+            "schema.Float64Attribute"
+        );
+        assert_eq!(tf_schema_attr_kind("types.Bool"), "schema.BoolAttribute");
+        assert_eq!(tf_schema_attr_kind("types.Set"), "schema.SetAttribute");
+        assert_eq!(tf_schema_attr_kind("types.List"), "schema.ListAttribute");
+        assert_eq!(tf_schema_attr_kind("types.Map"), "schema.MapAttribute");
+    }
+
+    #[test]
+    fn tf_schema_attr_kind_unknown_falls_back_to_string() {
+        assert_eq!(
+            tf_schema_attr_kind("types.Unknown"),
+            "schema.StringAttribute"
+        );
+    }
+
+    // --- force_new from field override (not just identity.force_new_fields) ---
+
+    #[test]
+    fn force_new_from_field_override() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "TestCreate"
+read_endpoint = "/read"
+read_schema = "TestRead"
+delete_endpoint = "/delete"
+delete_schema = "TestDelete"
+
+[identity]
+id_field = "name"
+
+[fields.region]
+force_new = true
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /create:
+    post:
+      operationId: c
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestCreate'
+      responses:
+        "200": { description: ok }
+  /read:
+    post: { operationId: r, responses: { "200": { description: ok } } }
+  /delete:
+    post: { operationId: d, responses: { "200": { description: ok } } }
+components:
+  schemas:
+    TestCreate:
+      type: object
+      properties:
+        name: { type: string }
+        region: { type: string }
+    TestRead:
+      type: object
+      properties:
+        name: { type: string }
+    TestDelete:
+      type: object
+      properties:
+        name: { type: string }
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let attrs = generate_schema_attributes(&resource, &api, &ProviderDefaults::default())
+            .expect("gen");
+        let region = attrs.iter().find(|a| a.tf_name == "region").expect("region");
+        assert!(
+            region.force_new,
+            "force_new from field override should be set"
+        );
+    }
+
+    // --- OpenAPI default value propagation ---
+
+    #[test]
+    fn openapi_default_value_propagated() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "TestCreate"
+read_endpoint = "/read"
+read_schema = "TestRead"
+delete_endpoint = "/delete"
+delete_schema = "TestDelete"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /create:
+    post:
+      operationId: c
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestCreate'
+      responses:
+        "200": { description: ok }
+  /read:
+    post: { operationId: r, responses: { "200": { description: ok } } }
+  /delete:
+    post: { operationId: d, responses: { "200": { description: ok } } }
+components:
+  schemas:
+    TestCreate:
+      type: object
+      properties:
+        name: { type: string }
+        timeout:
+          type: integer
+          default: 60
+    TestRead:
+      type: object
+      properties:
+        name: { type: string }
+    TestDelete:
+      type: object
+      properties:
+        name: { type: string }
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let attrs = generate_schema_attributes(&resource, &api, &ProviderDefaults::default())
+            .expect("gen");
+        let timeout = attrs
+            .iter()
+            .find(|a| a.tf_name == "timeout")
+            .expect("timeout");
+        assert!(
+            timeout.default_value.is_some(),
+            "OpenAPI default should propagate"
+        );
+        assert_eq!(timeout.default_value.as_deref(), Some("60"));
+    }
 }

@@ -91,4 +91,21 @@ mod tests {
         let debug_str = format!("{err:?}");
         assert!(debug_str.contains("SchemaNotFound"));
     }
+
+    #[test]
+    fn from_openapi_error() {
+        let api_result: Result<openapi_forge::Spec, _> =
+            openapi_forge::Spec::from_str("not valid yaml {{{}}}");
+        if let Err(openapi_err) = api_result {
+            let err: ForgeError = openapi_err.into();
+            assert!(err.to_string().contains("OpenAPI error"));
+        }
+    }
+
+    #[test]
+    fn error_variants_are_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        // ForgeError should be usable across threads
+        assert_send_sync::<ForgeError>();
+    }
 }
