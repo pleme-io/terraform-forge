@@ -220,7 +220,7 @@ fn render_single_attribute(attr: &TfAttribute) -> String {
 }
 
 /// Map a TF value type string to its schema attribute constructor.
-fn tf_schema_attr_kind(tf_value_type: &str) -> &'static str {
+pub(crate) fn tf_schema_attr_kind(tf_value_type: &str) -> &'static str {
     if tf_value_type.contains("Set") {
         "schema.SetAttribute"
     } else if tf_value_type.contains("List") {

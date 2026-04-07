@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Write as _;
 
 use openapi_forge::Spec;
 
@@ -164,7 +165,7 @@ var (
 
 fn render_ds_type(type_name: &str) -> String {
     format!(
-        r#"type {type_name}DataSource struct {{
+        r"type {type_name}DataSource struct {{
 	client *AkeylessClient
 }}
 
@@ -172,19 +173,20 @@ func New{type_name}DataSource() datasource.DataSource {{
 	return &{type_name}DataSource{{}}
 }}
 
-"#
+"
     )
 }
 
 fn render_ds_model(type_name: &str, attrs: &[TfAttribute]) -> String {
     let struct_name = format!("{type_name}DataSourceModel");
     let mut out = String::new();
-    out.push_str(&format!("type {struct_name} struct {{\n"));
+    let _ = writeln!(out, "type {struct_name} struct {{");
     for attr in attrs {
-        out.push_str(&format!(
-            "\t{} {} `tfsdk:\"{}\"`\n",
+        let _ = writeln!(
+            out,
+            "\t{} {} `tfsdk:\"{}\"`",
             attr.go_name, attr.tf_value_type, attr.tf_name
-        ));
+        );
     }
     out.push_str("}\n");
     out
@@ -207,7 +209,7 @@ fn render_ds_schema(attrs: &[TfAttribute], description: &str) -> String {
     out.push_str("func (d *Resource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {\n");
     out.push_str("\tresp.Schema = schema.Schema{\n");
     let desc = description.replace('"', "\\\"");
-    out.push_str(&format!("\t\tDescription: \"{desc}\",\n"));
+    let _ = writeln!(out, "\t\tDescription: \"{desc}\",");
     out.push_str("\t\tAttributes: map[string]schema.Attribute{\n");
 
     for attr in attrs {
@@ -224,48 +226,34 @@ fn render_ds_single_attribute(attr: &TfAttribute) -> String {
     let mut out = String::new();
     let indent = "\t\t\t";
 
-    let attr_kind = if attr.tf_value_type.contains("Set") {
-        "schema.SetAttribute"
-    } else if attr.tf_value_type.contains("List") {
-        "schema.ListAttribute"
-    } else if attr.tf_value_type.contains("Map") {
-        "schema.MapAttribute"
-    } else {
-        match attr.tf_value_type.as_str() {
-            "types.String" => "schema.StringAttribute",
-            "types.Int64" => "schema.Int64Attribute",
-            "types.Float64" => "schema.Float64Attribute",
-            "types.Bool" => "schema.BoolAttribute",
-            _ => "schema.StringAttribute",
-        }
-    };
+    let attr_kind = crate::schema_gen::tf_schema_attr_kind(&attr.tf_value_type);
 
-    out.push_str(&format!("{indent}\"{}\": {attr_kind}{{\n", attr.tf_name));
+    let _ = writeln!(out, "{indent}\"{}\": {attr_kind}{{", attr.tf_name);
 
     let desc = attr.description.replace('"', "\\\"");
-    out.push_str(&format!("{indent}\tDescription: \"{desc}\",\n"));
+    let _ = writeln!(out, "{indent}\tDescription: \"{desc}\",");
 
     if attr.optional && attr.computed {
-        out.push_str(&format!("{indent}\tOptional: true,\n"));
-        out.push_str(&format!("{indent}\tComputed: true,\n"));
+        let _ = writeln!(out, "{indent}\tOptional: true,");
+        let _ = writeln!(out, "{indent}\tComputed: true,");
     } else if attr.computed {
-        out.push_str(&format!("{indent}\tComputed: true,\n"));
+        let _ = writeln!(out, "{indent}\tComputed: true,");
     } else {
-        out.push_str(&format!("{indent}\tOptional: true,\n"));
+        let _ = writeln!(out, "{indent}\tOptional: true,");
     }
 
     if attr.sensitive {
-        out.push_str(&format!("{indent}\tSensitive: true,\n"));
+        let _ = writeln!(out, "{indent}\tSensitive: true,");
     }
 
     if attr.tf_value_type.contains("Set")
         || attr.tf_value_type.contains("List")
         || attr.tf_value_type.contains("Map")
     {
-        out.push_str(&format!("{indent}\tElementType: types.StringType{{}},\n"));
+        let _ = writeln!(out, "{indent}\tElementType: types.StringType{{}},");
     }
 
-    out.push_str(&format!("{indent}}},\n"));
+    let _ = writeln!(out, "{indent}}},");
     out
 }
 
