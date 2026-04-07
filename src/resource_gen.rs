@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use openapi_forge::Spec;
 
 use crate::error::ForgeError;
@@ -209,7 +211,7 @@ var (
 
 fn render_resource_type(type_name: &str) -> String {
     format!(
-        r#"type {type_name}Resource struct {{
+        r"type {type_name}Resource struct {{
 	client *AkeylessClient
 }}
 
@@ -217,7 +219,7 @@ func New{type_name}Resource() resource.Resource {{
 	return &{type_name}Resource{{}}
 }}
 
-"#
+"
     )
 }
 
@@ -270,11 +272,12 @@ fn render_create(type_name: &str, endpoint: &str, attrs: &[TfAttribute], id_fiel
         if attr.computed && !attr.optional {
             continue;
         }
-        setters.push_str(&format!("\n\t// Set {}\n", attr.tf_name));
-        setters.push_str(&format!(
+        let _ = write!(setters, "\n\t// Set {}\n", attr.tf_name);
+        let _ = write!(
+            setters,
             "\tif !plan.{go}.IsNull() && !plan.{go}.IsUnknown() {{\n",
             go = attr.go_name
-        ));
+        );
         setters.push_str(&render_setter("body", &attr.go_name, &attr.tf_value_type));
         setters.push_str("\t}\n");
     }
@@ -372,20 +375,19 @@ pub fn render_read_mapping_code(
     read_mapping: &std::collections::BTreeMap<String, String>,
 ) -> String {
     if read_mapping.is_empty() {
-        // No mappings defined -- generate placeholder comments
         let mut out = String::new();
         for attr in attrs {
-            out.push_str(&format!(
-                "\t// TODO: state.{} = ... // no read_mapping defined\n",
+            let _ = writeln!(
+                out,
+                "\t// TODO: state.{} = ... // no read_mapping defined",
                 attr.go_name
-            ));
+            );
         }
         out.push_str("\t_ = result\n");
         return out;
     }
 
     let mut out = String::new();
-    // Build reverse map: tf_name -> json_path
     let reverse: std::collections::BTreeMap<&str, &str> = read_mapping
         .iter()
         .map(|(json_path, tf_name)| (tf_name.as_str(), json_path.as_str()))
@@ -393,76 +395,71 @@ pub fn render_read_mapping_code(
 
     for attr in attrs {
         if let Some(json_path) = reverse.get(attr.tf_name.as_str()) {
-            match attr.tf_value_type.as_str() {
-                "types.String" => {
-                    out.push_str(&format!(
-                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
-                    ));
-                    out.push_str(&format!(
-                        "\t\tstate.{} = types.StringValue(v)\n",
-                        attr.go_name
-                    ));
-                    out.push_str("\t}\n");
-                }
-                "types.Bool" => {
-                    out.push_str(&format!(
-                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
-                    ));
-                    out.push_str(&format!(
-                        "\t\tstate.{} = types.BoolValue(v == \"true\")\n",
-                        attr.go_name
-                    ));
-                    out.push_str("\t}\n");
-                }
-                "types.Int64" => {
-                    out.push_str(&format!(
-                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
-                    ));
-                    out.push_str(&format!(
-                        "\t\tif n, err := strconv.ParseInt(v, 10, 64); err == nil {{\n"
-                    ));
-                    out.push_str(&format!(
-                        "\t\t\tstate.{} = types.Int64Value(n)\n",
-                        attr.go_name
-                    ));
-                    out.push_str("\t\t}\n");
-                    out.push_str("\t}\n");
-                }
-                "types.Float64" => {
-                    out.push_str(&format!(
-                        "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{\n"
-                    ));
-                    out.push_str(&format!(
-                        "\t\tif n, err := strconv.ParseFloat(v, 64); err == nil {{\n"
-                    ));
-                    out.push_str(&format!(
-                        "\t\t\tstate.{} = types.Float64Value(n)\n",
-                        attr.go_name
-                    ));
-                    out.push_str("\t\t}\n");
-                    out.push_str("\t}\n");
-                }
-                "types.Set" => {
-                    out.push_str(&format!(
-                        "\tif v, ok := GetNestedStringSlice(result, \"{json_path}\"); ok && len(v) > 0 {{\n"
-                    ));
-                    out.push_str(&format!(
-                        "\t\tsetVal, setDiags := types.SetValueFrom(ctx, types.StringType{{}}, v)\n"
-                    ));
-                    out.push_str("\t\tdiags.Append(setDiags...)\n");
-                    out.push_str(&format!("\t\tstate.{} = setVal\n", attr.go_name));
-                    out.push_str("\t}\n");
-                }
-                other => {
-                    out.push_str(&format!(
-                        "\t// TODO: handle {go} ({other}) from \"{json_path}\"\n",
-                        go = attr.go_name,
-                    ));
-                }
-            }
+            render_read_field(&mut out, &attr.go_name, &attr.tf_value_type, json_path);
         }
     }
     out
+}
+
+/// Render a single field's read-mapping Go code into the output buffer.
+fn render_read_field(out: &mut String, go_name: &str, tf_value_type: &str, json_path: &str) {
+    match tf_value_type {
+        "types.String" => {
+            let _ = writeln!(
+                out,
+                "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{"
+            );
+            let _ = writeln!(out, "\t\tstate.{go_name} = types.StringValue(v)");
+            out.push_str("\t}\n");
+        }
+        "types.Bool" => {
+            let _ = writeln!(
+                out,
+                "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{"
+            );
+            let _ = writeln!(
+                out,
+                "\t\tstate.{go_name} = types.BoolValue(v == \"true\")"
+            );
+            out.push_str("\t}\n");
+        }
+        "types.Int64" => {
+            let _ = writeln!(
+                out,
+                "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{"
+            );
+            out.push_str("\t\tif n, err := strconv.ParseInt(v, 10, 64); err == nil {\n");
+            let _ = writeln!(out, "\t\t\tstate.{go_name} = types.Int64Value(n)");
+            out.push_str("\t\t}\n");
+            out.push_str("\t}\n");
+        }
+        "types.Float64" => {
+            let _ = writeln!(
+                out,
+                "\tif v, ok := GetNestedString(result, \"{json_path}\"); ok {{"
+            );
+            out.push_str("\t\tif n, err := strconv.ParseFloat(v, 64); err == nil {\n");
+            let _ = writeln!(out, "\t\t\tstate.{go_name} = types.Float64Value(n)");
+            out.push_str("\t\t}\n");
+            out.push_str("\t}\n");
+        }
+        "types.Set" => {
+            let _ = writeln!(
+                out,
+                "\tif v, ok := GetNestedStringSlice(result, \"{json_path}\"); ok && len(v) > 0 {{"
+            );
+            out.push_str("\t\tsetVal, setDiags := types.SetValueFrom(ctx, types.StringType{}, v)\n");
+            out.push_str("\t\tdiags.Append(setDiags...)\n");
+            let _ = writeln!(out, "\t\tstate.{go_name} = setVal");
+            out.push_str("\t}\n");
+        }
+        other => {
+            let _ = writeln!(
+                out,
+                "\t// TODO: handle {go_name} ({other}) from \"{json_path}\""
+            );
+        }
+    }
 }
 
 fn render_update(type_name: &str, endpoint: &str, attrs: &[TfAttribute]) -> String {
@@ -471,10 +468,11 @@ fn render_update(type_name: &str, endpoint: &str, attrs: &[TfAttribute]) -> Stri
         if attr.computed && !attr.optional {
             continue;
         }
-        setters.push_str(&format!(
+        let _ = write!(
+            setters,
             "\tif !plan.{go}.IsNull() && !plan.{go}.IsUnknown() {{\n",
             go = attr.go_name
-        ));
+        );
         setters.push_str(&render_setter("body", &attr.go_name, &attr.tf_value_type));
         setters.push_str("\t}\n");
     }
