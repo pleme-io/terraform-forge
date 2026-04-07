@@ -12,6 +12,7 @@ use crate::type_map::{
 
 /// Generated Go source for a complete TF data source.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct GeneratedDataSource {
     pub file_name: String,
     pub go_code: String,

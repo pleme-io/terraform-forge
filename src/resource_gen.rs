@@ -9,6 +9,7 @@ use crate::type_map::{to_go_public_name, to_tf_name, to_type_name};
 
 /// Generated Go source for a complete TF resource.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct GeneratedResource {
     pub file_name: String,
     pub go_code: String,
