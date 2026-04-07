@@ -168,8 +168,7 @@ fn capitalize(s: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn generate_provider_code() {
+    fn make_provider_spec() -> ProviderSpec {
         let toml_str = r#"
 [provider]
 name = "akeyless"
@@ -183,7 +182,12 @@ env_var = "AKEYLESS_ACCESS_TOKEN"
 gateway_url_field = "api_gateway_address"
 gateway_env_var = "AKEYLESS_GATEWAY"
 "#;
-        let provider: ProviderSpec = toml::from_str(toml_str).expect("parse");
+        toml::from_str(toml_str).expect("parse")
+    }
+
+    #[test]
+    fn generate_provider_code() {
+        let provider = make_provider_spec();
         let type_names = vec!["StaticSecret".to_string()];
         let tf_names = vec!["akeyless_static_secret".to_string()];
 
@@ -196,20 +200,7 @@ gateway_env_var = "AKEYLESS_GATEWAY"
 
     #[test]
     fn generate_provider_with_data_sources() {
-        let toml_str = r#"
-[provider]
-name = "akeyless"
-description = "Akeyless Vault Provider"
-version = "1.0.0"
-sdk_import = "github.com/akeylesslabs/akeyless-go/v5"
-
-[auth]
-token_field = "token"
-env_var = "AKEYLESS_ACCESS_TOKEN"
-gateway_url_field = "api_gateway_address"
-gateway_env_var = "AKEYLESS_GATEWAY"
-"#;
-        let provider: ProviderSpec = toml::from_str(toml_str).expect("parse");
+        let provider = make_provider_spec();
         let type_names = vec!["StaticSecret".to_string()];
         let tf_names = vec!["akeyless_static_secret".to_string()];
         let ds_type_names = vec!["AuthMethod".to_string()];
@@ -217,5 +208,131 @@ gateway_env_var = "AKEYLESS_GATEWAY"
         let code = generate_provider(&provider, &type_names, &tf_names, &ds_type_names);
         assert!(code.contains("resources.NewAuthMethodDataSource"));
         assert!(code.contains("resources.NewStaticSecretResource"));
+    }
+
+    // --- Empty resources list ---
+
+    #[test]
+    fn generate_provider_empty_resources() {
+        let provider = make_provider_spec();
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(code.contains("AkeylessProvider"));
+        assert!(code.contains("return []func() resource.Resource{"));
+        assert!(code.contains("return []func() datasource.DataSource{}"));
+    }
+
+    // --- Multiple resources ---
+
+    #[test]
+    fn generate_provider_multiple_resources() {
+        let provider = make_provider_spec();
+        let type_names = vec![
+            "StaticSecret".to_string(),
+            "DynamicSecret".to_string(),
+            "AuthMethod".to_string(),
+        ];
+        let tf_names = vec![
+            "akeyless_static_secret".to_string(),
+            "akeyless_dynamic_secret".to_string(),
+            "akeyless_auth_method".to_string(),
+        ];
+        let code = generate_provider(&provider, &type_names, &tf_names, &[]);
+        assert!(code.contains("resources.NewStaticSecretResource"));
+        assert!(code.contains("resources.NewDynamicSecretResource"));
+        assert!(code.contains("resources.NewAuthMethodResource"));
+    }
+
+    // --- Description escaping ---
+
+    #[test]
+    fn generate_provider_description_escapes_quotes() {
+        let toml_str = r#"
+[provider]
+name = "test"
+description = 'Provider with "quotes" inside'
+version = "1"
+sdk_import = "sdk"
+
+[auth]
+token_field = "t"
+env_var = "E"
+gateway_url_field = "g"
+gateway_env_var = "G"
+"#;
+        let provider: ProviderSpec = toml::from_str(toml_str).expect("parse");
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(
+            code.contains(r#"Provider with \"quotes\" inside"#),
+            "Quotes in description should be escaped"
+        );
+    }
+
+    // --- capitalize helper ---
+
+    #[test]
+    fn capitalize_normal() {
+        assert_eq!(capitalize("akeyless"), "Akeyless");
+    }
+
+    #[test]
+    fn capitalize_single_char() {
+        assert_eq!(capitalize("a"), "A");
+    }
+
+    #[test]
+    fn capitalize_empty() {
+        assert_eq!(capitalize(""), "");
+    }
+
+    #[test]
+    fn capitalize_already_upper() {
+        assert_eq!(capitalize("Akeyless"), "Akeyless");
+    }
+
+    // --- Provider code structure ---
+
+    #[test]
+    fn generate_provider_has_package_declaration() {
+        let provider = make_provider_spec();
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(code.contains("package provider"));
+    }
+
+    #[test]
+    fn generate_provider_has_configure_with_env_vars() {
+        let provider = make_provider_spec();
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(code.contains("AKEYLESS_ACCESS_TOKEN"));
+        assert!(code.contains("AKEYLESS_GATEWAY"));
+        assert!(code.contains("os.Getenv"));
+    }
+
+    #[test]
+    fn generate_provider_has_default_gateway() {
+        let provider = make_provider_spec();
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(code.contains("https://api.akeyless.io"));
+    }
+
+    #[test]
+    fn generate_provider_has_metadata() {
+        let provider = make_provider_spec();
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(code.contains("resp.TypeName = \"akeyless\""));
+        assert!(code.contains("resp.Version = p.version"));
+    }
+
+    #[test]
+    fn generate_provider_internal_import_path() {
+        let provider = make_provider_spec();
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(code.contains("terraform-provider-akeyless-gen/internal/resources"));
+    }
+
+    #[test]
+    fn generate_provider_new_factory() {
+        let provider = make_provider_spec();
+        let code = generate_provider(&provider, &[], &[], &[]);
+        assert!(code.contains("func New(version string) func() provider.Provider"));
     }
 }
