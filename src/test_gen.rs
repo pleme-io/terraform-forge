@@ -64,14 +64,14 @@ func TestAcc{type_name}_basic(t *testing.T) {{
         .collect();
 
     if !sensitive_fields.is_empty() {
-        code.push_str("\t\t\t\tImportStateVerifyIgnore: []string{");
-        for (i, field) in sensitive_fields.iter().enumerate() {
-            if i > 0 {
-                code.push_str(", ");
-            }
-            code.push_str(&format!("\"{}\"", to_tf_name(field)));
-        }
-        code.push_str("},\n");
+        let quoted: Vec<String> = sensitive_fields
+            .iter()
+            .map(|f| format!("\"{}\"", to_tf_name(f)))
+            .collect();
+        code.push_str(&format!(
+            "\t\t\t\tImportStateVerifyIgnore: []string{{{}}},\n",
+            quoted.join(", ")
+        ));
     }
 
     code.push_str(&format!(

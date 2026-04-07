@@ -128,9 +128,11 @@ func New(version string) func() provider.Provider {{
         Name = capitalize(&provider.provider.name),
     ));
     code.push_str("\treturn []func() resource.Resource{\n");
-    for type_name in resource_type_names {
-        code.push_str(&format!("\t\tresources.New{type_name}Resource,\n"));
-    }
+    let resources_list: String = resource_type_names
+        .iter()
+        .map(|t| format!("\t\tresources.New{t}Resource,\n"))
+        .collect();
+    code.push_str(&resources_list);
     code.push_str("\t}\n");
     code.push_str("}\n\n");
 
@@ -143,9 +145,11 @@ func New(version string) func() provider.Provider {{
         code.push_str("\treturn []func() datasource.DataSource{}\n");
     } else {
         code.push_str("\treturn []func() datasource.DataSource{\n");
-        for type_name in data_source_type_names {
-            code.push_str(&format!("\t\tresources.New{type_name}DataSource,\n"));
-        }
+        let ds_list: String = data_source_type_names
+            .iter()
+            .map(|t| format!("\t\tresources.New{t}DataSource,\n"))
+            .collect();
+        code.push_str(&ds_list);
         code.push_str("\t}\n");
     }
     code.push_str("}\n");

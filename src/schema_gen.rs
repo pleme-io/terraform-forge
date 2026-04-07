@@ -116,9 +116,8 @@ pub fn render_schema_attributes(attrs: &[TfAttribute]) -> String {
     out.push_str("\tresp.Schema = schema.Schema{\n");
     out.push_str("\t\tAttributes: map[string]schema.Attribute{\n");
 
-    for attr in attrs {
-        out.push_str(&render_single_attribute(attr));
-    }
+    let attr_code: String = attrs.iter().map(render_single_attribute).collect();
+    out.push_str(&attr_code);
 
     out.push_str("\t\t},\n");
     out.push_str("\t}\n");
@@ -134,12 +133,11 @@ pub fn render_model_struct(resource_name: &str, attrs: &[TfAttribute]) -> String
     let mut out = String::new();
     out.push_str(&format!("type {struct_name} struct {{\n"));
 
-    for attr in attrs {
-        out.push_str(&format!(
-            "\t{} {} `tfsdk:\"{}\"`\n",
-            attr.go_name, attr.tf_value_type, attr.tf_name
-        ));
-    }
+    let fields: String = attrs
+        .iter()
+        .map(|a| format!("\t{} {} `tfsdk:\"{}\"`\n", a.go_name, a.tf_value_type, a.tf_name))
+        .collect();
+    out.push_str(&fields);
 
     out.push_str("}\n");
     out
