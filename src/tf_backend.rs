@@ -226,29 +226,43 @@ impl Backend for TerraformBackend {
     }
 }
 
-/// Convert IacResource back to ResourceSpec for backward-compat functions.
+/// Convert `IacResource` back to `ResourceSpec` for backward-compat functions.
 ///
 /// Includes ALL attributes (not just flagged ones) so that test generation
 /// and other consumers have the complete field set available.
 fn ir_to_resource_spec(resource: &IacResource) -> crate::spec::ResourceSpec {
-    let mut fields = std::collections::BTreeMap::new();
-    for attr in &resource.attributes {
-        fields.insert(
-            attr.api_name.clone(),
-            crate::spec::FieldOverride {
-                computed: attr.computed,
-                sensitive: attr.sensitive,
-                skip: false,
-                type_override: None,
-                description: if attr.description.is_empty() {
-                    None
-                } else {
-                    Some(attr.description.clone())
+    let fields = resource
+        .attributes
+        .iter()
+        .map(|attr| {
+            let desc = if attr.description.is_empty() {
+                None
+            } else {
+                Some(attr.description.clone())
+            };
+            (
+                attr.api_name.clone(),
+                crate::spec::FieldOverride {
+                    computed: attr.computed,
+                    sensitive: attr.sensitive,
+                    skip: false,
+                    type_override: None,
+                    description: desc,
+                    force_new: attr.immutable,
                 },
-                force_new: attr.immutable,
-            },
-        );
-    }
+            )
+        })
+        .collect();
+
+    let read_mapping = resource
+        .attributes
+        .iter()
+        .filter_map(|a| {
+            a.read_path
+                .as_ref()
+                .map(|rp| (rp.clone(), a.canonical_name.clone()))
+        })
+        .collect();
 
     crate::spec::ResourceSpec {
         resource: crate::spec::ResourceMeta {
@@ -273,15 +287,7 @@ fn ir_to_resource_spec(resource: &IacResource) -> crate::spec::ResourceSpec {
             force_new_fields: resource.identity.force_replace_fields.clone(),
         },
         fields,
-        read_mapping: resource
-            .attributes
-            .iter()
-            .filter_map(|a| {
-                a.read_path
-                    .as_ref()
-                    .map(|rp| (rp.clone(), a.canonical_name.clone()))
-            })
-            .collect(),
+        read_mapping,
     }
 }
 
