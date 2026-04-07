@@ -700,4 +700,498 @@ components:
         );
         assert!(result.go_code.contains("ImportState"));
     }
+
+    // --- No-update resource path ---
+
+    #[test]
+    fn generate_resource_without_update() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_immutable"
+description = "No update"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "CreateSecret"
+read_endpoint = "/get-secret-value"
+read_schema = "GetSecretValue"
+delete_endpoint = "/delete-item"
+delete_schema = "DeleteItem"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, defaults) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &defaults,
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(
+            result.go_code.contains("Update Not Supported"),
+            "No update endpoint should generate unsupported Update method"
+        );
+        assert!(result.go_code.contains("Delete and recreate instead"));
+    }
+
+    // --- Import field behavior ---
+
+    #[test]
+    fn generate_resource_import_state_uses_import_field() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_res"
+description = "test"
+
+[crud]
+create_endpoint = "/create-secret"
+create_schema = "CreateSecret"
+read_endpoint = "/get-secret-value"
+read_schema = "GetSecretValue"
+delete_endpoint = "/delete-item"
+delete_schema = "DeleteItem"
+
+[identity]
+id_field = "name"
+import_field = "path"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, defaults) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &defaults,
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(
+            result.go_code.contains("path.Root(\"path\")"),
+            "ImportState should use import_field when set"
+        );
+    }
+
+    #[test]
+    fn generate_resource_import_state_falls_back_to_id_field() {
+        let (resource, api, defaults) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &defaults,
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(
+            result.go_code.contains("path.Root(\"name\")"),
+            "ImportState should fall back to id_field"
+        );
+    }
+
+    // --- Resource without akeyless_ prefix ---
+
+    #[test]
+    fn generate_resource_no_prefix() {
+        let toml_str = r#"
+[resource]
+name = "custom_thing"
+description = "No akeyless prefix"
+
+[crud]
+create_endpoint = "/create-secret"
+create_schema = "CreateSecret"
+read_endpoint = "/get-secret-value"
+read_schema = "GetSecretValue"
+delete_endpoint = "/delete-item"
+delete_schema = "DeleteItem"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, defaults) = make_test_data();
+        let result = generate_resource(&resource, &api, &defaults, "github.com/test/sdk")
+            .expect("gen");
+        assert!(result.go_code.contains("CustomThingResource"));
+        assert_eq!(result.file_name, "resource_custom_thing.go");
+    }
+
+    // --- render_read_mapping_code branches ---
+
+    #[test]
+    fn render_read_mapping_empty_generates_todos() {
+        let attrs = vec![TfAttribute {
+            tf_name: "name".to_string(),
+            go_name: "Name".to_string(),
+            description: "".to_string(),
+            required: true,
+            optional: false,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: "types.StringType".to_string(),
+            tf_value_type: "types.String".to_string(),
+            go_type: "string".to_string(),
+            default_value: None,
+        }];
+        let mapping = std::collections::BTreeMap::new();
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("TODO: state.Name"));
+        assert!(code.contains("_ = result"));
+    }
+
+    #[test]
+    fn render_read_mapping_string_type() {
+        let attrs = vec![TfAttribute {
+            tf_name: "name".to_string(),
+            go_name: "Name".to_string(),
+            description: "".to_string(),
+            required: true,
+            optional: false,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: "types.StringType".to_string(),
+            tf_value_type: "types.String".to_string(),
+            go_type: "string".to_string(),
+            default_value: None,
+        }];
+        let mut mapping = std::collections::BTreeMap::new();
+        mapping.insert("item_name".to_string(), "name".to_string());
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("GetNestedString(result, \"item_name\")"));
+        assert!(code.contains("state.Name = types.StringValue(v)"));
+    }
+
+    #[test]
+    fn render_read_mapping_bool_type() {
+        let attrs = vec![TfAttribute {
+            tf_name: "enabled".to_string(),
+            go_name: "Enabled".to_string(),
+            description: "".to_string(),
+            required: false,
+            optional: true,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: "types.BoolType".to_string(),
+            tf_value_type: "types.Bool".to_string(),
+            go_type: "bool".to_string(),
+            default_value: None,
+        }];
+        let mut mapping = std::collections::BTreeMap::new();
+        mapping.insert("is_enabled".to_string(), "enabled".to_string());
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("GetNestedString(result, \"is_enabled\")"));
+        assert!(code.contains("types.BoolValue(v == \"true\")"));
+    }
+
+    #[test]
+    fn render_read_mapping_int64_type() {
+        let attrs = vec![TfAttribute {
+            tf_name: "count".to_string(),
+            go_name: "Count".to_string(),
+            description: "".to_string(),
+            required: false,
+            optional: true,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: "types.Int64Type".to_string(),
+            tf_value_type: "types.Int64".to_string(),
+            go_type: "int64".to_string(),
+            default_value: None,
+        }];
+        let mut mapping = std::collections::BTreeMap::new();
+        mapping.insert("item_count".to_string(), "count".to_string());
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("strconv.ParseInt(v, 10, 64)"));
+        assert!(code.contains("types.Int64Value(n)"));
+    }
+
+    #[test]
+    fn render_read_mapping_float64_type() {
+        let attrs = vec![TfAttribute {
+            tf_name: "rate".to_string(),
+            go_name: "Rate".to_string(),
+            description: "".to_string(),
+            required: false,
+            optional: true,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: "types.Float64Type".to_string(),
+            tf_value_type: "types.Float64".to_string(),
+            go_type: "float64".to_string(),
+            default_value: None,
+        }];
+        let mut mapping = std::collections::BTreeMap::new();
+        mapping.insert("rate_val".to_string(), "rate".to_string());
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("strconv.ParseFloat(v, 64)"));
+        assert!(code.contains("types.Float64Value(n)"));
+    }
+
+    #[test]
+    fn render_read_mapping_set_type() {
+        let attrs = vec![TfAttribute {
+            tf_name: "tags".to_string(),
+            go_name: "Tags".to_string(),
+            description: "".to_string(),
+            required: false,
+            optional: true,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: "types.SetType{ElemType: types.StringType}".to_string(),
+            tf_value_type: "types.Set".to_string(),
+            go_type: "[]string".to_string(),
+            default_value: None,
+        }];
+        let mut mapping = std::collections::BTreeMap::new();
+        mapping.insert("item_tags".to_string(), "tags".to_string());
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("GetNestedStringSlice(result, \"item_tags\")"));
+        assert!(code.contains("types.SetValueFrom(ctx, types.StringType{}, v)"));
+        assert!(code.contains("state.Tags = setVal"));
+    }
+
+    #[test]
+    fn render_read_mapping_unknown_type_generates_todo() {
+        let attrs = vec![TfAttribute {
+            tf_name: "data".to_string(),
+            go_name: "Data".to_string(),
+            description: "".to_string(),
+            required: false,
+            optional: true,
+            computed: false,
+            sensitive: false,
+            force_new: false,
+            tf_type_expr: "types.ListType{ElemType: types.Int64Type}".to_string(),
+            tf_value_type: "types.List".to_string(),
+            go_type: "[]int64".to_string(),
+            default_value: None,
+        }];
+        let mut mapping = std::collections::BTreeMap::new();
+        mapping.insert("raw_data".to_string(), "data".to_string());
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("TODO: handle Data"));
+    }
+
+    #[test]
+    fn render_read_mapping_skips_unmapped_attrs() {
+        let attrs = vec![
+            TfAttribute {
+                tf_name: "mapped".to_string(),
+                go_name: "Mapped".to_string(),
+                description: "".to_string(),
+                required: true,
+                optional: false,
+                computed: false,
+                sensitive: false,
+                force_new: false,
+                tf_type_expr: "types.StringType".to_string(),
+                tf_value_type: "types.String".to_string(),
+                go_type: "string".to_string(),
+                default_value: None,
+            },
+            TfAttribute {
+                tf_name: "unmapped".to_string(),
+                go_name: "Unmapped".to_string(),
+                description: "".to_string(),
+                required: false,
+                optional: true,
+                computed: false,
+                sensitive: false,
+                force_new: false,
+                tf_type_expr: "types.StringType".to_string(),
+                tf_value_type: "types.String".to_string(),
+                go_type: "string".to_string(),
+                default_value: None,
+            },
+        ];
+        let mut mapping = std::collections::BTreeMap::new();
+        mapping.insert("json_path".to_string(), "mapped".to_string());
+        let code = render_read_mapping_code(&attrs, &mapping);
+        assert!(code.contains("state.Mapped"));
+        assert!(!code.contains("state.Unmapped"));
+    }
+
+    // --- Imports rendering ---
+
+    #[test]
+    fn imports_include_strconv_for_int64() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_int_res"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "IntCreate"
+read_endpoint = "/read"
+read_schema = "IntRead"
+delete_endpoint = "/delete"
+delete_schema = "IntDelete"
+
+[identity]
+id_field = "count"
+"#;
+        let int_resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /create:
+    post:
+      operationId: c
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntCreate'
+      responses:
+        "200": { description: ok }
+  /read:
+    post: { operationId: r, responses: { "200": { description: ok } } }
+  /delete:
+    post: { operationId: d, responses: { "200": { description: ok } } }
+components:
+  schemas:
+    IntCreate:
+      type: object
+      required: [count]
+      properties:
+        count: { type: integer }
+    IntRead:
+      type: object
+      properties:
+        count: { type: integer }
+    IntDelete:
+      type: object
+      properties:
+        count: { type: integer }
+"#;
+        let int_api = Spec::from_str(api_str).expect("parse");
+        let result = generate_resource(
+            &int_resource,
+            &int_api,
+            &ProviderDefaults::default(),
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(
+            result.go_code.contains("\"strconv\""),
+            "Int64 field should trigger strconv import"
+        );
+    }
+
+    #[test]
+    fn imports_include_plan_modifiers_for_force_new() {
+        let (resource, api, defaults) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &defaults,
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(
+            result.go_code.contains("stringplanmodifier"),
+            "force_new field should trigger stringplanmodifier import"
+        );
+        assert!(
+            result.go_code.contains("planmodifier"),
+            "force_new field should trigger planmodifier import"
+        );
+    }
+
+    // --- Create/Update methods skip computed-only fields ---
+
+    #[test]
+    fn create_includes_optional_computed_field() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_auto"
+
+[crud]
+create_endpoint = "/create-secret"
+create_schema = "CreateSecret"
+read_endpoint = "/get-secret-value"
+read_schema = "GetSecretValue"
+delete_endpoint = "/delete-item"
+delete_schema = "DeleteItem"
+
+[identity]
+id_field = "name"
+
+[fields.tags]
+computed = true
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, _) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &ProviderDefaults::default(),
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        let create_section = result
+            .go_code
+            .split("func (r *AutoResource) Create")
+            .nth(1)
+            .unwrap()
+            .split("func (r *AutoResource) Read")
+            .next()
+            .unwrap();
+        assert!(
+            create_section.contains("// Set tags"),
+            "optional+computed fields should still appear in Create (they are optional inputs)"
+        );
+    }
+
+    // --- Metadata rendering ---
+
+    #[test]
+    fn metadata_uses_correct_suffix() {
+        let (resource, api, defaults) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &defaults,
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(result.go_code.contains("\"_static_secret\""));
+    }
+
+    // --- Generated resource type_name ---
+
+    #[test]
+    fn generated_resource_type_name() {
+        let (resource, api, defaults) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &defaults,
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert_eq!(result.resource_type_name, "StaticSecret");
+    }
+
+    // --- render_setter branches ---
+
+    #[test]
+    fn render_setter_list_type_generates_todo() {
+        let code = render_setter("body", "Items", "types.List");
+        assert!(code.contains("TODO: handle Items"));
+    }
+
+    #[test]
+    fn render_setter_map_type_generates_todo() {
+        let code = render_setter("body", "Labels", "types.Map");
+        assert!(code.contains("TODO: handle Labels"));
+    }
 }
