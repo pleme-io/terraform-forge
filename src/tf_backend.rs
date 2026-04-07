@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use iac_forge::backend::{ArtifactKind, Backend, GeneratedArtifact, NamingConvention};
 use iac_forge::ir::{IacDataSource, IacProvider, IacResource};
 use iac_forge::naming::{strip_provider_prefix, to_pascal_case, to_snake_case};
@@ -27,7 +29,7 @@ impl TerraformBackend {
         }
     }
 
-    /// Create from an `IacProvider`, extracting sdk_import from platform config.
+    /// Create from an `IacProvider`, extracting `sdk_import` from platform config.
     #[must_use]
     pub fn from_provider(provider: &IacProvider) -> Self {
         let sdk_import = provider
@@ -67,7 +69,7 @@ impl NamingConvention for TerraformNaming {
 }
 
 impl Backend for TerraformBackend {
-    fn platform(&self) -> &str {
+    fn platform(&self) -> &'static str {
         "terraform"
     }
 
@@ -76,7 +78,7 @@ impl Backend for TerraformBackend {
     /// **WIP**: This currently generates schema + model + read-mapping code but does NOT
     /// produce full CRUD methods (Create/Read/Update/Delete/ImportState). For complete
     /// resource generation, use `crate::resource_gen::generate_resource()` which takes
-    /// an OpenAPI `Spec`. Full CRUD generation via the Backend trait is planned.
+    /// an `OpenAPI` `Spec`. Full CRUD generation via the Backend trait is planned.
     fn generate_resource(
         &self,
         resource: &IacResource,
@@ -97,13 +99,14 @@ impl Backend for TerraformBackend {
             &attrs,
         ));
 
-        // Type definition
-        code.push_str(&format!(
+        let _ = write!(
+            code,
             "type {type_name}Resource struct {{\n\tclient *AkeylessClient\n}}\n\n"
-        ));
-        code.push_str(&format!(
+        );
+        let _ = write!(
+            code,
             "func New{type_name}Resource() resource.Resource {{\n\treturn &{type_name}Resource{{}}\n}}\n\n"
-        ));
+        );
 
         // Model struct
         code.push_str(&render_model_struct(&type_name, &attrs));
@@ -226,7 +229,7 @@ impl Backend for TerraformBackend {
     }
 }
 
-/// Convert IacResource back to ResourceSpec for backward-compat functions.
+/// Convert `IacResource` back to `ResourceSpec` for backward-compat functions.
 ///
 /// Includes ALL attributes (not just flagged ones) so that test generation
 /// and other consumers have the complete field set available.
