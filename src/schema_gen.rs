@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Write as _;
 
 use openapi_forge::{Field, Spec};
 
@@ -7,6 +8,7 @@ use crate::type_map::{go_to_tf_attr, openapi_to_go, tf_value_type, to_go_public_
 
 /// A resolved TF schema attribute ready for code generation.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TfAttribute {
     pub tf_name: String,
     pub go_name: String,
@@ -22,7 +24,7 @@ pub struct TfAttribute {
     pub default_value: Option<String>,
 }
 
-/// Generate TF schema attributes from a resource spec + OpenAPI spec.
+/// Generate TF schema attributes from a resource spec + `OpenAPI` spec.
 ///
 /// # Errors
 ///
@@ -132,13 +134,14 @@ pub fn render_schema_attributes(attrs: &[TfAttribute]) -> String {
 pub fn render_model_struct(resource_name: &str, attrs: &[TfAttribute]) -> String {
     let struct_name = format!("{resource_name}Model");
     let mut out = String::new();
-    out.push_str(&format!("type {struct_name} struct {{\n"));
+    let _ = writeln!(out, "type {struct_name} struct {{");
 
     for attr in attrs {
-        out.push_str(&format!(
-            "\t{} {} `tfsdk:\"{}\"`\n",
+        let _ = writeln!(
+            out,
+            "\t{} {} `tfsdk:\"{}\"`",
             attr.go_name, attr.tf_value_type, attr.tf_name
-        ));
+        );
     }
 
     out.push_str("}\n");
@@ -147,11 +150,7 @@ pub fn render_model_struct(resource_name: &str, attrs: &[TfAttribute]) -> String
 
 /// Return the Go element type expression for a collection attribute.
 fn element_type_for_attr(attr: &TfAttribute) -> &'static str {
-    // Use tf_type_expr which holds the full TfAttrType Display string, e.g.
-    // "types.SetType{ElemType: types.StringType}" — extract the inner type.
-    // We can also inspect the go_type field for a more direct mapping.
     match attr.go_type.as_str() {
-        "[]string" | "map[string]string" => "types.StringType",
         "[]int64" => "types.Int64Type",
         "[]float64" => "types.Float64Type",
         "[]bool" => "types.BoolType",
@@ -162,7 +161,6 @@ fn element_type_for_attr(attr: &TfAttribute) -> &'static str {
 /// Return the plan modifier generic type and function call for a force-new field.
 fn plan_modifier_for_attr(attr: &TfAttribute) -> (&'static str, &'static str) {
     match attr.tf_value_type.as_str() {
-        "types.String" => ("String", "stringplanmodifier.RequiresReplace()"),
         "types.Int64" => ("Int64", "int64planmodifier.RequiresReplace()"),
         "types.Float64" => ("Float64", "float64planmodifier.RequiresReplace()"),
         "types.Bool" => ("Bool", "boolplanmodifier.RequiresReplace()"),
@@ -177,67 +175,66 @@ fn render_single_attribute(attr: &TfAttribute) -> String {
     let mut out = String::new();
     let indent = "\t\t\t";
 
-    // Determine the attribute constructor based on type
-    let attr_kind = if attr.tf_value_type.contains("Set") {
-        "schema.SetAttribute"
-    } else if attr.tf_value_type.contains("List") {
-        "schema.ListAttribute"
-    } else if attr.tf_value_type.contains("Map") {
-        "schema.MapAttribute"
-    } else {
-        match attr.tf_value_type.as_str() {
-            "types.String" => "schema.StringAttribute",
-            "types.Int64" => "schema.Int64Attribute",
-            "types.Float64" => "schema.Float64Attribute",
-            "types.Bool" => "schema.BoolAttribute",
-            _ => "schema.StringAttribute",
-        }
-    };
+    let attr_kind = tf_schema_attr_kind(&attr.tf_value_type);
 
-    out.push_str(&format!("{indent}\"{}\": {attr_kind}{{\n", attr.tf_name));
+    let _ = writeln!(out, "{indent}\"{}\": {attr_kind}{{", attr.tf_name);
 
-    // Description
     let desc = attr.description.replace('"', "\\\"");
-    out.push_str(&format!("{indent}\tDescription: \"{desc}\",\n"));
+    let _ = writeln!(out, "{indent}\tDescription: \"{desc}\",");
 
-    // Required/Optional/Computed
     if attr.required {
-        out.push_str(&format!("{indent}\tRequired: true,\n"));
+        let _ = writeln!(out, "{indent}\tRequired: true,");
     } else if attr.computed && attr.optional {
-        out.push_str(&format!("{indent}\tOptional: true,\n"));
-        out.push_str(&format!("{indent}\tComputed: true,\n"));
+        let _ = writeln!(out, "{indent}\tOptional: true,");
+        let _ = writeln!(out, "{indent}\tComputed: true,");
     } else if attr.computed {
-        out.push_str(&format!("{indent}\tComputed: true,\n"));
+        let _ = writeln!(out, "{indent}\tComputed: true,");
     } else {
-        out.push_str(&format!("{indent}\tOptional: true,\n"));
+        let _ = writeln!(out, "{indent}\tOptional: true,");
     }
 
-    // Sensitive
     if attr.sensitive {
-        out.push_str(&format!("{indent}\tSensitive: true,\n"));
+        let _ = writeln!(out, "{indent}\tSensitive: true,");
     }
 
-    // Element type for collection attributes
     if attr.tf_value_type.contains("Set")
         || attr.tf_value_type.contains("List")
         || attr.tf_value_type.contains("Map")
     {
         let element_type = element_type_for_attr(attr);
-        out.push_str(&format!("{indent}\tElementType: {element_type}{{}},\n"));
+        let _ = writeln!(out, "{indent}\tElementType: {element_type}{{}},");
     }
 
-    // Plan modifiers for force-new
     if attr.force_new {
         let (modifier_type, modifier_fn) = plan_modifier_for_attr(attr);
-        out.push_str(&format!(
-            "{indent}\tPlanModifiers: []planmodifier.{modifier_type}{{\n"
-        ));
-        out.push_str(&format!("{indent}\t\t{modifier_fn},\n"));
-        out.push_str(&format!("{indent}\t}},\n"));
+        let _ = writeln!(
+            out,
+            "{indent}\tPlanModifiers: []planmodifier.{modifier_type}{{"
+        );
+        let _ = writeln!(out, "{indent}\t\t{modifier_fn},");
+        let _ = writeln!(out, "{indent}\t}},");
     }
 
-    out.push_str(&format!("{indent}}},\n"));
+    let _ = writeln!(out, "{indent}}},");
     out
+}
+
+/// Map a TF value type string to its schema attribute constructor.
+fn tf_schema_attr_kind(tf_value_type: &str) -> &'static str {
+    if tf_value_type.contains("Set") {
+        "schema.SetAttribute"
+    } else if tf_value_type.contains("List") {
+        "schema.ListAttribute"
+    } else if tf_value_type.contains("Map") {
+        "schema.MapAttribute"
+    } else {
+        match tf_value_type {
+            "types.Int64" => "schema.Int64Attribute",
+            "types.Float64" => "schema.Float64Attribute",
+            "types.Bool" => "schema.BoolAttribute",
+            _ => "schema.StringAttribute",
+        }
+    }
 }
 
 #[cfg(test)]
