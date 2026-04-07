@@ -122,7 +122,7 @@ impl ResourceSpec {
         Ok(spec)
     }
 
-    /// Validate the resource spec against an OpenAPI spec.
+    /// Validate the resource spec against an `OpenAPI` spec.
     ///
     /// # Errors
     ///
@@ -213,7 +213,7 @@ impl DataSourceSpec {
         Ok(spec)
     }
 
-    /// Validate the data source spec against an OpenAPI spec.
+    /// Validate the data source spec against an `OpenAPI` spec.
     ///
     /// # Errors
     ///

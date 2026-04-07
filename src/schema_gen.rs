@@ -47,7 +47,7 @@ impl TfAttribute {
     }
 }
 
-/// Generate TF schema attributes from a resource spec + OpenAPI spec.
+/// Generate TF schema attributes from a resource spec + `OpenAPI` spec.
 ///
 /// # Errors
 ///
@@ -170,11 +170,7 @@ pub fn render_model_struct(resource_name: &str, attrs: &[TfAttribute]) -> String
 
 /// Return the Go element type expression for a collection attribute.
 fn element_type_for_attr(attr: &TfAttribute) -> &'static str {
-    // Use tf_type_expr which holds the full TfAttrType Display string, e.g.
-    // "types.SetType{ElemType: types.StringType}" — extract the inner type.
-    // We can also inspect the go_type field for a more direct mapping.
     match attr.go_type.as_str() {
-        "[]string" | "map[string]string" => "types.StringType",
         "[]int64" => "types.Int64Type",
         "[]float64" => "types.Float64Type",
         "[]bool" => "types.BoolType",
@@ -185,7 +181,6 @@ fn element_type_for_attr(attr: &TfAttribute) -> &'static str {
 /// Return the plan modifier generic type and function call for a force-new field.
 fn plan_modifier_for_attr(attr: &TfAttribute) -> (&'static str, &'static str) {
     match attr.tf_value_type.as_str() {
-        "types.String" => ("String", "stringplanmodifier.RequiresReplace()"),
         "types.Int64" => ("Int64", "int64planmodifier.RequiresReplace()"),
         "types.Float64" => ("Float64", "float64planmodifier.RequiresReplace()"),
         "types.Bool" => ("Bool", "boolplanmodifier.RequiresReplace()"),
@@ -209,7 +204,6 @@ pub(crate) fn render_single_attribute(attr: &TfAttribute) -> String {
         "schema.MapAttribute"
     } else {
         match attr.tf_value_type.as_str() {
-            "types.String" => "schema.StringAttribute",
             "types.Int64" => "schema.Int64Attribute",
             "types.Float64" => "schema.Float64Attribute",
             "types.Bool" => "schema.BoolAttribute",

@@ -10,7 +10,6 @@ pub struct GeneratedTest {
 }
 
 /// Generate acceptance test scaffolding for a resource.
-#[must_use]
 pub fn generate_test(resource: &ResourceSpec) -> GeneratedTest {
     let type_name = to_type_name(&resource.resource.name);
 

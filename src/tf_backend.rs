@@ -27,7 +27,7 @@ impl TerraformBackend {
         }
     }
 
-    /// Create from an `IacProvider`, extracting sdk_import from platform config.
+    /// Create from an `IacProvider`, extracting `sdk_import` from platform config.
     #[must_use]
     pub fn from_provider(provider: &IacProvider) -> Self {
         let sdk_import = provider
@@ -76,7 +76,7 @@ impl Backend for TerraformBackend {
     /// **WIP**: This currently generates schema + model + read-mapping code but does NOT
     /// produce full CRUD methods (Create/Read/Update/Delete/ImportState). For complete
     /// resource generation, use `crate::resource_gen::generate_resource()` which takes
-    /// an OpenAPI `Spec`. Full CRUD generation via the Backend trait is planned.
+    /// an `OpenAPI` `Spec`. Full CRUD generation via the Backend trait is planned.
     fn generate_resource(
         &self,
         resource: &IacResource,
