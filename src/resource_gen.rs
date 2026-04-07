@@ -106,7 +106,7 @@ pub fn generate_resource(
     })
 }
 
-fn render_imports(type_name: &str, sdk_import: &str, attrs: &[TfAttribute]) -> String {
+pub(crate) fn render_imports(type_name: &str, sdk_import: &str, attrs: &[TfAttribute]) -> String {
     // Determine which extra imports are needed based on field types
     let needs_strconv = attrs
         .iter()
