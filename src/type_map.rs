@@ -30,6 +30,37 @@ pub enum TfAttrType {
     Map(Box<TfAttrType>),
 }
 
+impl Default for GoType {
+    fn default() -> Self {
+        Self::String
+    }
+}
+
+impl Default for TfAttrType {
+    fn default() -> Self {
+        Self::String
+    }
+}
+
+impl std::str::FromStr for GoType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "string" => Ok(Self::String),
+            "int64" => Ok(Self::Int64),
+            "float64" => Ok(Self::Float64),
+            "bool" => Ok(Self::Bool),
+            "[]string" => Ok(Self::ListOfString),
+            "[]int64" => Ok(Self::ListOfInt64),
+            "[]float64" => Ok(Self::ListOfFloat64),
+            "[]bool" => Ok(Self::ListOfBool),
+            "map[string]string" => Ok(Self::MapOfString),
+            other => Ok(Self::Object(other.to_string())),
+        }
+    }
+}
+
 impl std::fmt::Display for GoType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -673,6 +704,47 @@ mod tests {
         assert_eq!(tf.tf_value_type, "types.String");
         assert_eq!(tf.tf_type_expr, "types.StringType");
         assert!(tf.default_value.is_none());
+    }
+
+    #[test]
+    fn go_type_default_is_string() {
+        assert_eq!(GoType::default(), GoType::String);
+    }
+
+    #[test]
+    fn tf_attr_type_default_is_string() {
+        assert_eq!(TfAttrType::default(), TfAttrType::String);
+    }
+
+    #[test]
+    fn go_type_from_str_roundtrip() {
+        let variants = [
+            GoType::String,
+            GoType::Int64,
+            GoType::Float64,
+            GoType::Bool,
+            GoType::ListOfString,
+            GoType::ListOfInt64,
+            GoType::ListOfFloat64,
+            GoType::ListOfBool,
+            GoType::MapOfString,
+            GoType::Object("CustomType".to_string()),
+        ];
+        for variant in &variants {
+            let s = variant.to_string();
+            let parsed: GoType = s.parse().unwrap();
+            assert_eq!(&parsed, variant, "FromStr round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn go_type_hash_works() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(GoType::String);
+        set.insert(GoType::Int64);
+        set.insert(GoType::String);
+        assert_eq!(set.len(), 2);
     }
 
     #[test]
