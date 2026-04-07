@@ -568,4 +568,352 @@ description = "Custom desc"
         assert_eq!(fo.type_override, Some("bool".to_string()));
         assert_eq!(fo.description, Some("Custom desc".to_string()));
     }
+
+    // --- ResourceSpec::validate tests ---
+
+    fn make_validation_api() -> openapi_forge::Spec {
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: Test, version: "1.0" }
+paths:
+  /create:
+    post:
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Create'
+      responses:
+        "200": { description: ok }
+  /read:
+    post: { operationId: read, responses: { "200": { description: ok } } }
+  /delete:
+    post: { operationId: delete, responses: { "200": { description: ok } } }
+components:
+  schemas:
+    Create:
+      type: object
+      properties:
+        name: { type: string }
+    Read:
+      type: object
+      properties:
+        name: { type: string }
+    Delete:
+      type: object
+      properties:
+        name: { type: string }
+    Update:
+      type: object
+      properties:
+        name: { type: string }
+    ResponseSchema:
+      type: object
+      properties:
+        output: { type: string }
+"#;
+        openapi_forge::Spec::from_str(api_str).expect("parse api")
+    }
+
+    #[test]
+    fn validate_resource_spec_success() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "Create"
+read_endpoint = "/read"
+read_schema = "Read"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        assert!(spec.validate(&api).is_ok());
+    }
+
+    #[test]
+    fn validate_resource_spec_missing_create_schema() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "NonExistent"
+read_endpoint = "/read"
+read_schema = "Read"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        assert!(err.to_string().contains("NonExistent"));
+    }
+
+    #[test]
+    fn validate_resource_spec_missing_read_schema() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "Create"
+read_endpoint = "/read"
+read_schema = "MissingRead"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        assert!(err.to_string().contains("MissingRead"));
+    }
+
+    #[test]
+    fn validate_resource_spec_missing_delete_schema() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "Create"
+read_endpoint = "/read"
+read_schema = "Read"
+delete_endpoint = "/delete"
+delete_schema = "MissingDelete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        assert!(err.to_string().contains("MissingDelete"));
+    }
+
+    #[test]
+    fn validate_resource_spec_missing_update_schema() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "Create"
+update_endpoint = "/update"
+update_schema = "MissingUpdate"
+read_endpoint = "/read"
+read_schema = "Read"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        assert!(err.to_string().contains("MissingUpdate"));
+    }
+
+    #[test]
+    fn validate_resource_spec_missing_response_schema() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "Create"
+read_endpoint = "/read"
+read_schema = "Read"
+read_response_schema = "MissingResponse"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        assert!(err.to_string().contains("MissingResponse"));
+    }
+
+    #[test]
+    fn validate_resource_spec_missing_endpoint() {
+        let toml_str = r#"
+[resource]
+name = "test_res"
+
+[crud]
+create_endpoint = "/nonexistent-endpoint"
+create_schema = "Create"
+read_endpoint = "/read"
+read_schema = "Read"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("test_res"));
+        assert!(msg.contains("/nonexistent-endpoint"));
+    }
+
+    #[test]
+    fn validate_resource_spec_with_optional_schemas_success() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "Create"
+update_endpoint = "/create"
+update_schema = "Update"
+read_endpoint = "/read"
+read_schema = "Read"
+read_response_schema = "ResponseSchema"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        assert!(spec.validate(&api).is_ok());
+    }
+
+    // --- DataSourceSpec::validate tests ---
+
+    #[test]
+    fn validate_datasource_spec_success() {
+        let toml_str = r#"
+[data_source]
+name = "test_ds"
+description = "Test"
+
+[read]
+endpoint = "/read"
+schema = "Read"
+"#;
+        let spec: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        assert!(spec.validate(&api).is_ok());
+    }
+
+    #[test]
+    fn validate_datasource_spec_missing_schema() {
+        let toml_str = r#"
+[data_source]
+name = "test_ds"
+description = "Test"
+
+[read]
+endpoint = "/read"
+schema = "MissingSchema"
+"#;
+        let spec: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        assert!(err.to_string().contains("MissingSchema"));
+    }
+
+    #[test]
+    fn validate_datasource_spec_missing_response_schema() {
+        let toml_str = r#"
+[data_source]
+name = "test_ds"
+description = "Test"
+
+[read]
+endpoint = "/read"
+schema = "Read"
+response_schema = "MissingResp"
+"#;
+        let spec: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        assert!(err.to_string().contains("MissingResp"));
+    }
+
+    #[test]
+    fn validate_datasource_spec_missing_endpoint() {
+        let toml_str = r#"
+[data_source]
+name = "test_ds"
+description = "Test"
+
+[read]
+endpoint = "/nonexistent"
+schema = "Read"
+"#;
+        let spec: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        let err = spec.validate(&api).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("test_ds"));
+        assert!(msg.contains("/nonexistent"));
+    }
+
+    #[test]
+    fn validate_datasource_spec_with_response_schema_success() {
+        let toml_str = r#"
+[data_source]
+name = "test_ds"
+description = "Test"
+
+[read]
+endpoint = "/read"
+schema = "Read"
+response_schema = "ResponseSchema"
+"#;
+        let spec: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api = make_validation_api();
+        assert!(spec.validate(&api).is_ok());
+    }
+
+    // --- ProviderSpec::load invalid TOML ---
+
+    #[test]
+    fn provider_spec_load_invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad_provider.toml");
+        std::fs::write(&path, "this is not valid toml {{{").unwrap();
+        let result = ProviderSpec::load(&path);
+        assert!(result.is_err());
+    }
+
+    // --- DataSourceSpec::load invalid TOML ---
+
+    #[test]
+    fn datasource_spec_load_invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad_ds.toml");
+        std::fs::write(&path, "this is not valid toml {{{").unwrap();
+        let result = DataSourceSpec::load(&path);
+        assert!(result.is_err());
+    }
 }
