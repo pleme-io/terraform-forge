@@ -82,6 +82,7 @@ pub struct ProviderSpec {
     pub defaults: ProviderDefaults,
 }
 
+/// Provider metadata (name, description, version, SDK import).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderMeta {
     pub name: String,
@@ -93,6 +94,7 @@ pub struct ProviderMeta {
     pub sdk_import: String,
 }
 
+/// Provider authentication configuration (token field, environment variables).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AuthConfig {
     #[serde(default)]
@@ -105,6 +107,7 @@ pub struct AuthConfig {
     pub gateway_env_var: String,
 }
 
+/// Provider-level default settings (fields to skip globally).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProviderDefaults {
     #[serde(default)]
