@@ -171,7 +171,7 @@ fn plan_modifier_for_attr(attr: &TfAttribute) -> (&'static str, &'static str) {
     }
 }
 
-fn render_single_attribute(attr: &TfAttribute) -> String {
+pub(crate) fn render_single_attribute(attr: &TfAttribute) -> String {
     let mut out = String::new();
     let indent = "\t\t\t";
 

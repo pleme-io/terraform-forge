@@ -4,7 +4,7 @@ use openapi_forge::Spec;
 
 use crate::error::ForgeError;
 use crate::resource_gen::render_read_mapping_code;
-use crate::schema_gen::TfAttribute;
+use crate::schema_gen::{TfAttribute, render_single_attribute};
 use crate::spec::{DataSourceSpec, ProviderDefaults};
 use crate::type_map::{
     go_to_tf_attr, openapi_to_go, tf_value_type, to_go_public_name, to_tf_name, to_type_name,
@@ -207,61 +207,12 @@ fn render_ds_schema(attrs: &[TfAttribute], description: &str) -> String {
     out.push_str(&format!("\t\tDescription: \"{desc}\",\n"));
     out.push_str("\t\tAttributes: map[string]schema.Attribute{\n");
 
-    let attr_code: String = attrs.iter().map(render_ds_single_attribute).collect();
+    let attr_code: String = attrs.iter().map(render_single_attribute).collect();
     out.push_str(&attr_code);
 
     out.push_str("\t\t},\n");
     out.push_str("\t}\n");
     out.push_str("}\n");
-    out
-}
-
-fn render_ds_single_attribute(attr: &TfAttribute) -> String {
-    let mut out = String::new();
-    let indent = "\t\t\t";
-
-    let attr_kind = if attr.tf_value_type.contains("Set") {
-        "schema.SetAttribute"
-    } else if attr.tf_value_type.contains("List") {
-        "schema.ListAttribute"
-    } else if attr.tf_value_type.contains("Map") {
-        "schema.MapAttribute"
-    } else {
-        match attr.tf_value_type.as_str() {
-            "types.String" => "schema.StringAttribute",
-            "types.Int64" => "schema.Int64Attribute",
-            "types.Float64" => "schema.Float64Attribute",
-            "types.Bool" => "schema.BoolAttribute",
-            _ => "schema.StringAttribute",
-        }
-    };
-
-    out.push_str(&format!("{indent}\"{}\": {attr_kind}{{\n", attr.tf_name));
-
-    let desc = attr.description.replace('"', "\\\"");
-    out.push_str(&format!("{indent}\tDescription: \"{desc}\",\n"));
-
-    if attr.optional && attr.computed {
-        out.push_str(&format!("{indent}\tOptional: true,\n"));
-        out.push_str(&format!("{indent}\tComputed: true,\n"));
-    } else if attr.computed {
-        out.push_str(&format!("{indent}\tComputed: true,\n"));
-    } else {
-        out.push_str(&format!("{indent}\tOptional: true,\n"));
-    }
-
-    if attr.sensitive {
-        out.push_str(&format!("{indent}\tSensitive: true,\n"));
-    }
-
-    if attr.tf_value_type.contains("Set")
-        || attr.tf_value_type.contains("List")
-        || attr.tf_value_type.contains("Map")
-    {
-        out.push_str(&format!("{indent}\tElementType: types.StringType{{}},\n"));
-    }
-
-    out.push_str(&format!("{indent}}},\n"));
     out
 }
 
