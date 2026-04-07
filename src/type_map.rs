@@ -2,7 +2,8 @@ use iac_forge::IacType;
 use openapi_forge::TypeInfo;
 
 /// Go type representation for code generation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum GoType {
     String,
     Int64,
@@ -17,7 +18,8 @@ pub enum GoType {
 }
 
 /// Terraform framework attribute type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum TfAttrType {
     String,
     Int64,
