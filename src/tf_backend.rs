@@ -796,4 +796,371 @@ mod tests {
             "Output should contain the read_path references"
         );
     }
+
+    // --- from_provider constructor ---
+
+    #[test]
+    fn from_provider_extracts_sdk_import() {
+        let mut platform_config = std::collections::HashMap::new();
+        let mut tf_table = toml::map::Map::new();
+        tf_table.insert(
+            "sdk_import".to_string(),
+            toml::Value::String("github.com/custom/sdk".to_string()),
+        );
+        platform_config.insert(
+            "terraform".to_string(),
+            toml::Value::Table(tf_table),
+        );
+
+        let provider = IacProvider {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            version: "1.0".to_string(),
+            auth: AuthInfo {
+                token_field: "t".to_string(),
+                env_var: "E".to_string(),
+                gateway_url_field: "g".to_string(),
+                gateway_env_var: "G".to_string(),
+            },
+            skip_fields: vec![],
+            platform_config,
+        };
+
+        let backend = TerraformBackend::from_provider(&provider);
+        assert_eq!(backend.sdk_import, "github.com/custom/sdk");
+    }
+
+    #[test]
+    fn from_provider_empty_platform_config() {
+        let provider = IacProvider {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            version: "1.0".to_string(),
+            auth: AuthInfo {
+                token_field: "t".to_string(),
+                env_var: "E".to_string(),
+                gateway_url_field: "g".to_string(),
+                gateway_env_var: "G".to_string(),
+            },
+            skip_fields: vec![],
+            platform_config: std::collections::HashMap::new(),
+        };
+
+        let backend = TerraformBackend::from_provider(&provider);
+        assert_eq!(backend.sdk_import, "");
+    }
+
+    // --- NamingConvention::field_name ---
+
+    #[test]
+    fn naming_field_name() {
+        let naming = TerraformNaming;
+        assert_eq!(naming.field_name("bound-aws-account-id"), "bound_aws_account_id");
+        assert_eq!(naming.field_name("delete_protection"), "delete_protection");
+    }
+
+    // --- NamingConvention::file_name for all artifact kinds ---
+
+    #[test]
+    fn naming_file_datasource() {
+        let naming = TerraformNaming;
+        assert_eq!(
+            naming.file_name("akeyless_auth_method", &ArtifactKind::DataSource),
+            "datasource_akeyless_auth_method.go"
+        );
+    }
+
+    #[test]
+    fn naming_file_test() {
+        let naming = TerraformNaming;
+        assert_eq!(
+            naming.file_name("akeyless_static_secret", &ArtifactKind::Test),
+            "resource_akeyless_static_secret_test.go"
+        );
+    }
+
+    #[test]
+    fn naming_file_provider() {
+        let naming = TerraformNaming;
+        assert_eq!(
+            naming.file_name("anything", &ArtifactKind::Provider),
+            "provider.go"
+        );
+    }
+
+    // --- generate_data_source returns empty vec ---
+
+    #[test]
+    fn generate_data_source_returns_empty() {
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let ds = IacDataSource {
+            name: "akeyless_ds".to_string(),
+            description: "Test DS".to_string(),
+            read_endpoint: "/get".to_string(),
+            read_schema: "GetDS".to_string(),
+            read_response_schema: None,
+            attributes: vec![],
+        };
+        let artifacts = backend.generate_data_source(&ds, &provider).unwrap();
+        assert!(artifacts.is_empty(), "generate_data_source currently returns empty");
+    }
+
+    // --- generate_provider with data sources ---
+
+    #[test]
+    fn generate_provider_with_ds_via_backend() {
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let resource = make_test_resource();
+        let ds = IacDataSource {
+            name: "akeyless_auth_method".to_string(),
+            description: "Auth method".to_string(),
+            read_endpoint: "/get-auth-method".to_string(),
+            read_schema: "GetAuthMethod".to_string(),
+            read_response_schema: None,
+            attributes: vec![],
+        };
+        let artifacts = backend
+            .generate_provider(&provider, &[resource], &[ds])
+            .unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert!(artifacts[0].content.contains("NewAuthMethodDataSource"));
+        assert!(artifacts[0].content.contains("NewStaticSecretResource"));
+    }
+
+    // --- naming edge: provider prefix stripping ---
+
+    #[test]
+    fn naming_resource_type_strips_provider_prefix() {
+        let naming = TerraformNaming;
+        assert_eq!(
+            naming.resource_type_name("akeyless_static_secret", "akeyless"),
+            "StaticSecret"
+        );
+    }
+
+    #[test]
+    fn naming_resource_type_no_prefix() {
+        let naming = TerraformNaming;
+        let result = naming.resource_type_name("custom_thing", "different_provider");
+        assert_eq!(result, "CustomThing");
+    }
+
+    // --- ir_to_resource_spec edge cases ---
+
+    #[test]
+    fn ir_to_resource_spec_empty_description_is_none() {
+        let resource = IacResource {
+            name: "test".to_string(),
+            description: "".to_string(),
+            category: "".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/c".to_string(),
+                create_schema: "C".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/r".to_string(),
+                read_schema: "R".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/d".to_string(),
+                delete_schema: "D".to_string(),
+            },
+            attributes: vec![IacAttribute {
+                api_name: "x".to_string(),
+                canonical_name: "x".to_string(),
+                description: "".to_string(),
+                iac_type: IacType::String,
+                required: false,
+                computed: false,
+                sensitive: false,
+                immutable: false,
+                default_value: None,
+                enum_values: None,
+                read_path: None,
+                update_only: false,
+            }],
+            identity: IdentityInfo {
+                id_field: "x".to_string(),
+                import_field: "x".to_string(),
+                force_replace_fields: vec![],
+            },
+        };
+        let spec = ir_to_resource_spec(&resource);
+        let field = spec.fields.get("x").unwrap();
+        assert!(
+            field.description.is_none(),
+            "Empty description should map to None"
+        );
+    }
+
+    #[test]
+    fn ir_to_resource_spec_preserves_read_mapping() {
+        let resource = make_test_resource();
+        let spec = ir_to_resource_spec(&resource);
+        assert_eq!(
+            spec.read_mapping.get("item_name"),
+            Some(&"name".to_string()),
+            "read_path should be preserved in read_mapping"
+        );
+        assert_eq!(
+            spec.read_mapping.get("item_tags"),
+            Some(&"tags".to_string()),
+        );
+        assert!(
+            !spec.read_mapping.contains_key("value"),
+            "Attrs without read_path should not appear"
+        );
+    }
+
+    // --- Resource with float64 force_new ---
+
+    #[test]
+    fn imports_float64_force_new_includes_float64planmodifier() {
+        let resource = IacResource {
+            name: "akeyless_float_resource".to_string(),
+            description: "Resource with float64 force_new".to_string(),
+            category: "test".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/create".to_string(),
+                create_schema: "Create".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/read".to_string(),
+                read_schema: "Read".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/delete".to_string(),
+                delete_schema: "Delete".to_string(),
+            },
+            attributes: vec![IacAttribute {
+                api_name: "rate".to_string(),
+                canonical_name: "rate".to_string(),
+                description: "Rate".to_string(),
+                iac_type: IacType::Float,
+                required: true,
+                computed: false,
+                sensitive: false,
+                immutable: true,
+                default_value: None,
+                enum_values: None,
+                read_path: None,
+                update_only: false,
+            }],
+            identity: IdentityInfo {
+                id_field: "rate".to_string(),
+                import_field: "rate".to_string(),
+                force_replace_fields: vec!["rate".to_string()],
+            },
+        };
+
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+
+        assert!(code.contains("float64planmodifier"));
+        assert!(code.contains("strconv"));
+    }
+
+    // --- Resource with set force_new ---
+
+    #[test]
+    fn imports_set_force_new_includes_setplanmodifier() {
+        let resource = IacResource {
+            name: "akeyless_set_resource".to_string(),
+            description: "Resource with set force_new".to_string(),
+            category: "test".to_string(),
+            crud: CrudInfo {
+                create_endpoint: "/create".to_string(),
+                create_schema: "Create".to_string(),
+                update_endpoint: None,
+                update_schema: None,
+                read_endpoint: "/read".to_string(),
+                read_schema: "Read".to_string(),
+                read_response_schema: None,
+                delete_endpoint: "/delete".to_string(),
+                delete_schema: "Delete".to_string(),
+            },
+            attributes: vec![IacAttribute {
+                api_name: "regions".to_string(),
+                canonical_name: "regions".to_string(),
+                description: "Regions".to_string(),
+                iac_type: IacType::List(Box::new(IacType::String)),
+                required: true,
+                computed: false,
+                sensitive: false,
+                immutable: true,
+                default_value: None,
+                enum_values: None,
+                read_path: None,
+                update_only: false,
+            }],
+            identity: IdentityInfo {
+                id_field: "regions".to_string(),
+                import_field: "regions".to_string(),
+                force_replace_fields: vec!["regions".to_string()],
+            },
+        };
+
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+
+        assert!(code.contains("setplanmodifier"));
+    }
+
+    // --- Test generation via backend with read_path ---
+
+    #[test]
+    fn generate_test_via_backend_preserves_sensitive_in_ignore() {
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let resource = make_test_resource();
+
+        let artifacts = backend.generate_test(&resource, &provider).unwrap();
+        let code = &artifacts[0].content;
+        assert!(
+            code.contains("ImportStateVerifyIgnore"),
+            "Sensitive 'value' field should trigger ImportStateVerifyIgnore"
+        );
+        assert!(code.contains("\"value\""));
+    }
+
+    // --- Artifact paths ---
+
+    #[test]
+    fn generate_resource_artifact_path() {
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let resource = make_test_resource();
+        let artifacts = backend.generate_resource(&resource, &provider).unwrap();
+        assert_eq!(
+            artifacts[0].path,
+            "resources/resource_akeyless_static_secret.go"
+        );
+    }
+
+    #[test]
+    fn generate_test_artifact_path() {
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let resource = make_test_resource();
+        let artifacts = backend.generate_test(&resource, &provider).unwrap();
+        assert_eq!(
+            artifacts[0].path,
+            "resources/resource_akeyless_static_secret_test.go"
+        );
+    }
+
+    #[test]
+    fn generate_provider_artifact_path() {
+        let backend = TerraformBackend::new("github.com/test/sdk");
+        let provider = make_test_provider();
+        let resource = make_test_resource();
+        let artifacts = backend
+            .generate_provider(&provider, &[resource], &[])
+            .unwrap();
+        assert_eq!(artifacts[0].path, "provider/provider.go");
+    }
 }
