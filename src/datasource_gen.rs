@@ -466,4 +466,303 @@ components:
                 .contains("state.AccessId = types.StringValue(v)")
         );
     }
+
+    // --- Computed-only field (not Optional) ---
+
+    #[test]
+    fn datasource_computed_only_field_not_optional() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_ds"
+description = "DS"
+
+[read]
+endpoint = "/get"
+schema = "GetDS"
+
+[fields]
+auto_field = { computed = true }
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /get:
+    post:
+      operationId: get
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDS'
+      responses:
+        "200": { description: ok }
+components:
+  schemas:
+    GetDS:
+      type: object
+      required: [name, auto_field]
+      properties:
+        name: { type: string }
+        auto_field: { type: string }
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let attrs =
+            generate_datasource_attributes(&ds, &api, &ProviderDefaults::default()).expect("gen");
+
+        let auto = attrs
+            .iter()
+            .find(|a| a.tf_name == "auto_field")
+            .expect("auto_field");
+        assert!(!auto.required, "computed ds field should not be required");
+        assert!(!auto.optional, "computed-only ds field should not be optional");
+        assert!(auto.computed, "computed field should be computed");
+    }
+
+    // --- Sensitive data source field ---
+
+    #[test]
+    fn datasource_sensitive_field() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_ds"
+description = "DS"
+
+[read]
+endpoint = "/get"
+schema = "GetDS"
+
+[fields]
+secret = { sensitive = true }
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /get:
+    post:
+      operationId: get
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDS'
+      responses:
+        "200": { description: ok }
+components:
+  schemas:
+    GetDS:
+      type: object
+      properties:
+        secret: { type: string }
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let attrs =
+            generate_datasource_attributes(&ds, &api, &ProviderDefaults::default()).expect("gen");
+        let secret = attrs
+            .iter()
+            .find(|a| a.tf_name == "secret")
+            .expect("secret");
+        assert!(secret.sensitive);
+    }
+
+    // --- Data source schema rendering ---
+
+    #[test]
+    fn datasource_schema_includes_description() {
+        let (ds, api, defaults) = make_ds_test_data();
+        let result = generate_datasource(
+            &ds,
+            &api,
+            &defaults,
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(result.go_code.contains("Description: \"Read an auth method\""));
+    }
+
+    // --- Data source without name field: no id setup ---
+
+    #[test]
+    fn datasource_no_name_field_still_generates() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_no_name"
+description = "No name field"
+
+[read]
+endpoint = "/get-thing"
+schema = "GetThing"
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /get-thing:
+    post:
+      operationId: getThing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetThing'
+      responses:
+        "200": { description: ok }
+components:
+  schemas:
+    GetThing:
+      type: object
+      properties:
+        count: { type: integer }
+        enabled: { type: boolean }
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let result = generate_datasource(
+            &ds,
+            &api,
+            &ProviderDefaults::default(),
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(result.go_code.contains("NoNameDataSource"));
+        assert!(!result.go_code.contains("body.SetName"), "No name field means no id setup");
+    }
+
+    // --- Data source without akeyless_ prefix ---
+
+    #[test]
+    fn datasource_no_prefix() {
+        let toml_str = r#"
+[data_source]
+name = "custom_data"
+description = "Custom"
+
+[read]
+endpoint = "/get-auth-method"
+schema = "GetAuthMethod"
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, defaults) = make_ds_test_data();
+        let result = generate_datasource(&ds, &api, &defaults, "github.com/test/sdk")
+            .expect("gen");
+        assert!(result.go_code.contains("CustomDataDataSource"));
+        assert_eq!(result.file_name, "datasource_custom_data.go");
+    }
+
+    // --- Global skip in data source ---
+
+    #[test]
+    fn datasource_global_skip_fields() {
+        let (ds, api, _) = make_ds_test_data();
+        let defaults = ProviderDefaults {
+            skip_fields: vec!["access_id".to_string()],
+        };
+        let attrs = generate_datasource_attributes(&ds, &api, &defaults).expect("gen");
+        assert!(
+            attrs.iter().all(|a| a.tf_name != "access_id"),
+            "access_id should be skipped via global defaults"
+        );
+    }
+
+    // --- Data source schema attribute rendering: sensitive ---
+
+    #[test]
+    fn datasource_schema_sensitive_attribute() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_sens"
+description = "Sensitive test"
+
+[read]
+endpoint = "/get-auth-method"
+schema = "GetAuthMethod"
+
+[fields]
+access_id = { sensitive = true }
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, defaults) = make_ds_test_data();
+        let result = generate_datasource(&ds, &api, &defaults, "github.com/test/sdk")
+            .expect("gen");
+        assert!(result.go_code.contains("Sensitive: true"));
+    }
+
+    // --- Data source type_override ---
+
+    #[test]
+    fn datasource_type_override() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_override"
+description = "Override"
+
+[read]
+endpoint = "/get-auth-method"
+schema = "GetAuthMethod"
+
+[fields]
+access_id = { type_override = "bool" }
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, defaults) = make_ds_test_data();
+        let attrs = generate_datasource_attributes(&ds, &api, &defaults).expect("gen");
+        let access = attrs
+            .iter()
+            .find(|a| a.tf_name == "access_id")
+            .expect("access_id");
+        assert_eq!(access.go_type, "bool");
+    }
+
+    // --- Data source Read with first optional string field as ID ---
+
+    #[test]
+    fn datasource_read_uses_first_optional_string_when_no_name() {
+        let toml_str = r#"
+[data_source]
+name = "akeyless_alt_id"
+description = "Alt ID"
+
+[read]
+endpoint = "/get-alt"
+schema = "GetAlt"
+"#;
+        let ds: DataSourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths:
+  /get-alt:
+    post:
+      operationId: getAlt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetAlt'
+      responses:
+        "200": { description: ok }
+components:
+  schemas:
+    GetAlt:
+      type: object
+      properties:
+        path: { type: string, description: "Path" }
+        count: { type: integer }
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let result = generate_datasource(
+            &ds,
+            &api,
+            &ProviderDefaults::default(),
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        assert!(
+            result.go_code.contains("body.SetPath"),
+            "Should use first optional string field 'path' as id"
+        );
+    }
 }
