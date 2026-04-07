@@ -1192,4 +1192,103 @@ computed = true
         let code = render_setter("body", "Labels", "types.Map");
         assert!(code.contains("TODO: handle Labels"));
     }
+
+    // --- generate_resource error path ---
+
+    #[test]
+    fn generate_resource_missing_schema_errors() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_bad"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "NonExistent"
+read_endpoint = "/read"
+read_schema = "Read"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "name"
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let api_str = r#"
+openapi: "3.0.0"
+info: { title: T, version: "1" }
+paths: {}
+components:
+  schemas: {}
+"#;
+        let api = Spec::from_str(api_str).expect("parse");
+        let result = generate_resource(
+            &resource,
+            &api,
+            &ProviderDefaults::default(),
+            "sdk",
+        );
+        assert!(result.is_err(), "Missing create schema should error");
+    }
+
+    // --- render_setter set type integration ---
+
+    #[test]
+    fn render_setter_set_type() {
+        let code = render_setter("body", "Tags", "types.Set");
+        assert!(code.contains("expandStringSet"));
+        assert!(code.contains("body.SetTags"));
+    }
+
+    // --- render_setter unknown type generates TODO ---
+
+    #[test]
+    fn render_setter_unknown_type_generates_todo() {
+        let code = render_setter("body", "Data", "types.Object");
+        assert!(code.contains("TODO: handle Data"));
+    }
+
+    // --- Computed-only field is skipped in Create ---
+
+    #[test]
+    fn create_includes_optional_computed_field_setter() {
+        let toml_str = r#"
+[resource]
+name = "akeyless_comp"
+
+[crud]
+create_endpoint = "/create-secret"
+create_schema = "CreateSecret"
+read_endpoint = "/get-secret-value"
+read_schema = "GetSecretValue"
+delete_endpoint = "/delete-item"
+delete_schema = "DeleteItem"
+
+[identity]
+id_field = "name"
+
+[fields.name]
+computed = true
+"#;
+        let resource: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let (_, api, _) = make_test_data();
+        let result = generate_resource(
+            &resource,
+            &api,
+            &ProviderDefaults::default(),
+            "github.com/test/sdk",
+        )
+        .expect("gen");
+        let create_section = result
+            .go_code
+            .split("func (r *CompResource) Create")
+            .nth(1)
+            .unwrap()
+            .split("func (r *CompResource) Read")
+            .next()
+            .unwrap();
+        assert!(
+            create_section.contains("// Set name"),
+            "Optional+Computed field 'name' should still have a setter in Create"
+        );
+    }
 }
