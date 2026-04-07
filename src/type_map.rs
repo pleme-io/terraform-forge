@@ -59,7 +59,7 @@ impl std::fmt::Display for TfAttrType {
     }
 }
 
-/// Map an OpenAPI type to a Go type.
+/// Map an `OpenAPI` type to a Go type.
 #[must_use]
 pub fn openapi_to_go(type_info: &TypeInfo, type_override: Option<&str>) -> GoType {
     if let Some(override_str) = type_override {
@@ -73,23 +73,18 @@ pub fn openapi_to_go(type_info: &TypeInfo, type_override: Option<&str>) -> GoTyp
     }
 
     match type_info {
-        TypeInfo::String => GoType::String,
         TypeInfo::Integer => GoType::Int64,
         TypeInfo::Number => GoType::Float64,
         TypeInfo::Boolean => GoType::Bool,
         TypeInfo::Array(inner) => match inner.as_ref() {
-            TypeInfo::String => GoType::ListOfString,
             TypeInfo::Integer => GoType::ListOfInt64,
             TypeInfo::Number => GoType::ListOfFloat64,
             TypeInfo::Boolean => GoType::ListOfBool,
             _ => GoType::ListOfString,
         },
-        TypeInfo::Map(inner) => match inner.as_ref() {
-            TypeInfo::String => GoType::MapOfString,
-            _ => GoType::MapOfString,
-        },
+        TypeInfo::Map(_) => GoType::MapOfString,
         TypeInfo::Object(name) => GoType::Object(name.clone()),
-        TypeInfo::Any => GoType::String,
+        TypeInfo::String | TypeInfo::Any => GoType::String,
     }
 }
 
@@ -97,7 +92,6 @@ pub fn openapi_to_go(type_info: &TypeInfo, type_override: Option<&str>) -> GoTyp
 #[must_use]
 pub fn go_to_tf_attr(go_type: &GoType) -> TfAttrType {
     match go_type {
-        GoType::String => TfAttrType::String,
         GoType::Int64 => TfAttrType::Int64,
         GoType::Float64 => TfAttrType::Float64,
         GoType::Bool => TfAttrType::Bool,
@@ -106,7 +100,7 @@ pub fn go_to_tf_attr(go_type: &GoType) -> TfAttrType {
         GoType::ListOfFloat64 => TfAttrType::List(Box::new(TfAttrType::Float64)),
         GoType::ListOfBool => TfAttrType::List(Box::new(TfAttrType::Bool)),
         GoType::MapOfString => TfAttrType::Map(Box::new(TfAttrType::String)),
-        GoType::Object(_) => TfAttrType::String,
+        GoType::String | GoType::Object(_) => TfAttrType::String,
     }
 }
 
@@ -114,7 +108,6 @@ pub fn go_to_tf_attr(go_type: &GoType) -> TfAttrType {
 #[must_use]
 pub fn tf_value_type(go_type: &GoType) -> &'static str {
     match go_type {
-        GoType::String => "types.String",
         GoType::Int64 => "types.Int64",
         GoType::Float64 => "types.Float64",
         GoType::Bool => "types.Bool",
@@ -122,7 +115,7 @@ pub fn tf_value_type(go_type: &GoType) -> &'static str {
             "types.Set"
         }
         GoType::MapOfString => "types.Map",
-        GoType::Object(_) => "types.String",
+        GoType::String | GoType::Object(_) => "types.String",
     }
 }
 
@@ -142,7 +135,7 @@ pub fn sdk_setter(field_name: &str, go_type: &GoType) -> String {
     }
 }
 
-/// Convert a hyphenated/snake_case field name to Go public name.
+/// Convert a hyphenated/`snake_case` field name to Go public name.
 ///
 /// Examples: `bound-aws-account-id` -> `BoundAwsAccountId`,
 ///           `access_expires` -> `AccessExpires`
@@ -151,7 +144,7 @@ pub fn to_go_public_name(name: &str) -> String {
     meimei::go::to_public(name)
 }
 
-/// Convert a name to TF snake_case (hyphens become underscores).
+/// Convert a name to TF `snake_case` (hyphens become underscores).
 #[must_use]
 pub fn to_tf_name(name: &str) -> String {
     meimei::to_snake_case(name)
@@ -161,19 +154,10 @@ pub fn to_tf_name(name: &str) -> String {
 impl From<&IacType> for GoType {
     fn from(iac: &IacType) -> Self {
         match iac {
-            IacType::String => Self::String,
             IacType::Integer => Self::Int64,
             IacType::Float => Self::Float64,
             IacType::Boolean => Self::Bool,
-            IacType::List(inner) => match inner.as_ref() {
-                IacType::String => Self::ListOfString,
-                IacType::Integer => Self::ListOfInt64,
-                IacType::Float => Self::ListOfFloat64,
-                IacType::Boolean => Self::ListOfBool,
-                _ => Self::ListOfString,
-            },
-            IacType::Set(inner) => match inner.as_ref() {
-                IacType::String => Self::ListOfString,
+            IacType::List(inner) | IacType::Set(inner) => match inner.as_ref() {
                 IacType::Integer => Self::ListOfInt64,
                 IacType::Float => Self::ListOfFloat64,
                 IacType::Boolean => Self::ListOfBool,
@@ -182,7 +166,7 @@ impl From<&IacType> for GoType {
             IacType::Map(_) => Self::MapOfString,
             IacType::Object { name, .. } => Self::Object(name.clone()),
             IacType::Enum { underlying, .. } => Self::from(underlying.as_ref()),
-            IacType::Any => Self::String,
+            IacType::String | IacType::Any => Self::String,
         }
     }
 }
