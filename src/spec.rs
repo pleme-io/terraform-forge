@@ -332,4 +332,236 @@ skip_fields = ["token", "uid-token", "json"]
         assert_eq!(spec.auth.token_field, "token");
         assert_eq!(spec.defaults.skip_fields.len(), 3);
     }
+
+    // --- ResourceSpec::load from file ---
+
+    #[test]
+    fn resource_spec_load_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("resource.toml");
+        std::fs::write(
+            &path,
+            r#"
+[resource]
+name = "test_res"
+description = "desc"
+category = "cat"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "Create"
+read_endpoint = "/read"
+read_schema = "Read"
+delete_endpoint = "/delete"
+delete_schema = "Delete"
+
+[identity]
+id_field = "id"
+"#,
+        )
+        .unwrap();
+        let spec = ResourceSpec::load(&path).unwrap();
+        assert_eq!(spec.resource.name, "test_res");
+        assert_eq!(spec.identity.id_field, "id");
+    }
+
+    #[test]
+    fn resource_spec_load_nonexistent_file() {
+        let result = ResourceSpec::load(Path::new("/nonexistent/path.toml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resource_spec_load_invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.toml");
+        std::fs::write(&path, "this is not valid toml {{{").unwrap();
+        let result = ResourceSpec::load(&path);
+        assert!(result.is_err());
+    }
+
+    // --- ProviderSpec::load from file ---
+
+    #[test]
+    fn provider_spec_load_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("provider.toml");
+        std::fs::write(
+            &path,
+            r#"
+[provider]
+name = "test"
+description = "Test Provider"
+version = "0.1.0"
+sdk_import = "github.com/test/sdk"
+
+[auth]
+token_field = "tok"
+env_var = "TOK_ENV"
+gateway_url_field = "gw"
+gateway_env_var = "GW_ENV"
+"#,
+        )
+        .unwrap();
+        let spec = ProviderSpec::load(&path).unwrap();
+        assert_eq!(spec.provider.name, "test");
+        assert_eq!(spec.auth.token_field, "tok");
+    }
+
+    #[test]
+    fn provider_spec_load_nonexistent_file() {
+        let result = ProviderSpec::load(Path::new("/nonexistent/provider.toml"));
+        assert!(result.is_err());
+    }
+
+    // --- DataSourceSpec::load from file ---
+
+    #[test]
+    fn datasource_spec_load_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ds.toml");
+        std::fs::write(
+            &path,
+            r#"
+[data_source]
+name = "test_ds"
+description = "A data source"
+
+[read]
+endpoint = "/get"
+schema = "GetSchema"
+"#,
+        )
+        .unwrap();
+        let spec = DataSourceSpec::load(&path).unwrap();
+        assert_eq!(spec.data_source.name, "test_ds");
+        assert_eq!(spec.read.endpoint, "/get");
+        assert!(spec.read.response_schema.is_none());
+    }
+
+    #[test]
+    fn datasource_spec_load_nonexistent_file() {
+        let result = DataSourceSpec::load(Path::new("/nonexistent/ds.toml"));
+        assert!(result.is_err());
+    }
+
+    // --- Defaults / Optional fields ---
+
+    #[test]
+    fn resource_spec_optional_fields_default() {
+        let toml_str = r#"
+[resource]
+name = "minimal"
+
+[crud]
+create_endpoint = "/create"
+create_schema = "C"
+read_endpoint = "/read"
+read_schema = "R"
+delete_endpoint = "/delete"
+delete_schema = "D"
+
+[identity]
+id_field = "id"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        assert_eq!(spec.resource.description, "");
+        assert_eq!(spec.resource.category, "");
+        assert!(spec.crud.update_endpoint.is_none());
+        assert!(spec.crud.update_schema.is_none());
+        assert!(spec.crud.read_response_schema.is_none());
+        assert!(spec.identity.import_field.is_none());
+        assert!(spec.identity.force_new_fields.is_empty());
+        assert!(spec.fields.is_empty());
+        assert!(spec.read_mapping.is_empty());
+    }
+
+    #[test]
+    fn field_override_defaults() {
+        let fo = FieldOverride::default();
+        assert!(!fo.computed);
+        assert!(!fo.sensitive);
+        assert!(!fo.skip);
+        assert!(!fo.force_new);
+        assert!(fo.type_override.is_none());
+        assert!(fo.description.is_none());
+    }
+
+    #[test]
+    fn provider_defaults_empty() {
+        let pd = ProviderDefaults::default();
+        assert!(pd.skip_fields.is_empty());
+    }
+
+    #[test]
+    fn auth_config_defaults() {
+        let ac = AuthConfig::default();
+        assert_eq!(ac.token_field, "");
+        assert_eq!(ac.env_var, "");
+        assert_eq!(ac.gateway_url_field, "");
+        assert_eq!(ac.gateway_env_var, "");
+    }
+
+    // --- Serialization round-trip ---
+
+    #[test]
+    fn resource_spec_serialize_roundtrip() {
+        let toml_str = r#"
+[resource]
+name = "test_rt"
+description = "roundtrip"
+category = "cat"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "C"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "id"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let serialized = toml::to_string(&spec).expect("serialize");
+        let reparsed: ResourceSpec = toml::from_str(&serialized).expect("reparse");
+        assert_eq!(reparsed.resource.name, "test_rt");
+        assert_eq!(reparsed.crud.create_endpoint, "/c");
+    }
+
+    #[test]
+    fn field_override_all_flags() {
+        let toml_str = r#"
+[resource]
+name = "test"
+
+[crud]
+create_endpoint = "/c"
+create_schema = "C"
+read_endpoint = "/r"
+read_schema = "R"
+delete_endpoint = "/d"
+delete_schema = "D"
+
+[identity]
+id_field = "id"
+
+[fields.secret_key]
+computed = true
+sensitive = true
+skip = false
+force_new = true
+type_override = "bool"
+description = "Custom desc"
+"#;
+        let spec: ResourceSpec = toml::from_str(toml_str).expect("parse");
+        let fo = spec.fields.get("secret_key").unwrap();
+        assert!(fo.computed);
+        assert!(fo.sensitive);
+        assert!(!fo.skip);
+        assert!(fo.force_new);
+        assert_eq!(fo.type_override, Some("bool".to_string()));
+        assert_eq!(fo.description, Some("Custom desc".to_string()));
+    }
 }

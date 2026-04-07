@@ -277,4 +277,447 @@ mod tests {
         assert_eq!(to_tf_name("bound-aws-account-id"), "bound_aws_account_id");
         assert_eq!(to_tf_name("delete_protection"), "delete_protection");
     }
+
+    // --- GoType Display coverage ---
+
+    #[test]
+    fn go_type_display_all_variants() {
+        assert_eq!(GoType::String.to_string(), "string");
+        assert_eq!(GoType::Int64.to_string(), "int64");
+        assert_eq!(GoType::Float64.to_string(), "float64");
+        assert_eq!(GoType::Bool.to_string(), "bool");
+        assert_eq!(GoType::ListOfString.to_string(), "[]string");
+        assert_eq!(GoType::ListOfInt64.to_string(), "[]int64");
+        assert_eq!(GoType::ListOfFloat64.to_string(), "[]float64");
+        assert_eq!(GoType::ListOfBool.to_string(), "[]bool");
+        assert_eq!(GoType::MapOfString.to_string(), "map[string]string");
+        assert_eq!(
+            GoType::Object("CustomType".to_string()).to_string(),
+            "CustomType"
+        );
+    }
+
+    // --- TfAttrType Display coverage ---
+
+    #[test]
+    fn tf_attr_type_display_all_variants() {
+        assert_eq!(TfAttrType::String.to_string(), "types.StringType");
+        assert_eq!(TfAttrType::Int64.to_string(), "types.Int64Type");
+        assert_eq!(TfAttrType::Float64.to_string(), "types.Float64Type");
+        assert_eq!(TfAttrType::Bool.to_string(), "types.BoolType");
+        assert_eq!(
+            TfAttrType::List(Box::new(TfAttrType::Int64)).to_string(),
+            "types.ListType{ElemType: types.Int64Type}"
+        );
+        assert_eq!(
+            TfAttrType::Set(Box::new(TfAttrType::String)).to_string(),
+            "types.SetType{ElemType: types.StringType}"
+        );
+        assert_eq!(
+            TfAttrType::Map(Box::new(TfAttrType::Bool)).to_string(),
+            "types.MapType{ElemType: types.BoolType}"
+        );
+    }
+
+    // --- openapi_to_go edge cases ---
+
+    #[test]
+    fn openapi_to_go_number_maps_to_float64() {
+        assert_eq!(openapi_to_go(&TypeInfo::Number, None), GoType::Float64);
+    }
+
+    #[test]
+    fn openapi_to_go_any_maps_to_string() {
+        assert_eq!(openapi_to_go(&TypeInfo::Any, None), GoType::String);
+    }
+
+    #[test]
+    fn openapi_to_go_object() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Object("MyObj".to_string()), None),
+            GoType::Object("MyObj".to_string())
+        );
+    }
+
+    #[test]
+    fn openapi_to_go_array_of_integer() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Array(Box::new(TypeInfo::Integer)), None),
+            GoType::ListOfInt64
+        );
+    }
+
+    #[test]
+    fn openapi_to_go_array_of_number() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Array(Box::new(TypeInfo::Number)), None),
+            GoType::ListOfFloat64
+        );
+    }
+
+    #[test]
+    fn openapi_to_go_array_of_boolean() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Array(Box::new(TypeInfo::Boolean)), None),
+            GoType::ListOfBool
+        );
+    }
+
+    #[test]
+    fn openapi_to_go_array_of_nested_array_falls_back_to_list_of_string() {
+        let nested = TypeInfo::Array(Box::new(TypeInfo::Array(Box::new(TypeInfo::String))));
+        assert_eq!(openapi_to_go(&nested, None), GoType::ListOfString);
+    }
+
+    #[test]
+    fn openapi_to_go_map_of_non_string_falls_back_to_map_of_string() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Map(Box::new(TypeInfo::Integer)), None),
+            GoType::MapOfString
+        );
+    }
+
+    #[test]
+    fn openapi_to_go_map_of_string() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Map(Box::new(TypeInfo::String)), None),
+            GoType::MapOfString
+        );
+    }
+
+    #[test]
+    fn type_override_int64() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Boolean, Some("int64")),
+            GoType::Int64
+        );
+    }
+
+    #[test]
+    fn type_override_float64() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::String, Some("float64")),
+            GoType::Float64
+        );
+    }
+
+    #[test]
+    fn type_override_string() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::Integer, Some("string")),
+            GoType::String
+        );
+    }
+
+    #[test]
+    fn type_override_custom_object() {
+        assert_eq!(
+            openapi_to_go(&TypeInfo::String, Some("CustomStruct")),
+            GoType::Object("CustomStruct".to_string())
+        );
+    }
+
+    // --- go_to_tf_attr exhaustive coverage ---
+
+    #[test]
+    fn go_to_tf_attr_all_variants() {
+        assert_eq!(go_to_tf_attr(&GoType::String), TfAttrType::String);
+        assert_eq!(go_to_tf_attr(&GoType::Int64), TfAttrType::Int64);
+        assert_eq!(go_to_tf_attr(&GoType::Float64), TfAttrType::Float64);
+        assert_eq!(go_to_tf_attr(&GoType::Bool), TfAttrType::Bool);
+        assert_eq!(
+            go_to_tf_attr(&GoType::ListOfString),
+            TfAttrType::Set(Box::new(TfAttrType::String))
+        );
+        assert_eq!(
+            go_to_tf_attr(&GoType::ListOfInt64),
+            TfAttrType::List(Box::new(TfAttrType::Int64))
+        );
+        assert_eq!(
+            go_to_tf_attr(&GoType::ListOfFloat64),
+            TfAttrType::List(Box::new(TfAttrType::Float64))
+        );
+        assert_eq!(
+            go_to_tf_attr(&GoType::ListOfBool),
+            TfAttrType::List(Box::new(TfAttrType::Bool))
+        );
+        assert_eq!(
+            go_to_tf_attr(&GoType::MapOfString),
+            TfAttrType::Map(Box::new(TfAttrType::String))
+        );
+        assert_eq!(
+            go_to_tf_attr(&GoType::Object("Foo".to_string())),
+            TfAttrType::String
+        );
+    }
+
+    // --- tf_value_type coverage ---
+
+    #[test]
+    fn tf_value_type_all_variants() {
+        assert_eq!(tf_value_type(&GoType::String), "types.String");
+        assert_eq!(tf_value_type(&GoType::Int64), "types.Int64");
+        assert_eq!(tf_value_type(&GoType::Float64), "types.Float64");
+        assert_eq!(tf_value_type(&GoType::Bool), "types.Bool");
+        assert_eq!(tf_value_type(&GoType::ListOfString), "types.Set");
+        assert_eq!(tf_value_type(&GoType::ListOfInt64), "types.Set");
+        assert_eq!(tf_value_type(&GoType::ListOfFloat64), "types.Set");
+        assert_eq!(tf_value_type(&GoType::ListOfBool), "types.Set");
+        assert_eq!(tf_value_type(&GoType::MapOfString), "types.Map");
+        assert_eq!(tf_value_type(&GoType::Object("X".to_string())), "types.String");
+    }
+
+    // --- sdk_setter coverage ---
+
+    #[test]
+    fn sdk_setter_string() {
+        let result = sdk_setter("name", &GoType::String);
+        assert!(result.contains("ValueStringPointer()"));
+        assert!(result.contains("body.Name"));
+        assert!(result.contains("plan.Name"));
+    }
+
+    #[test]
+    fn sdk_setter_int64() {
+        let result = sdk_setter("max_ttl", &GoType::Int64);
+        assert!(result.contains("ValueInt64Pointer()"));
+        assert!(result.contains("body.MaxTtl"));
+    }
+
+    #[test]
+    fn sdk_setter_float64() {
+        let result = sdk_setter("rate", &GoType::Float64);
+        assert!(result.contains("ValueFloat64Pointer()"));
+        assert!(result.contains("body.Rate"));
+    }
+
+    #[test]
+    fn sdk_setter_bool() {
+        let result = sdk_setter("is_admin", &GoType::Bool);
+        assert!(result.contains("ValueBoolPointer()"));
+        assert!(result.contains("body.IsAdmin"));
+    }
+
+    #[test]
+    fn sdk_setter_list_of_string() {
+        let result = sdk_setter("tags", &GoType::ListOfString);
+        assert!(result.contains("expandStringSet"));
+        assert!(result.contains("body.Tags"));
+    }
+
+    #[test]
+    fn sdk_setter_unsupported_type_generates_todo() {
+        let result = sdk_setter("data", &GoType::ListOfInt64);
+        assert!(result.contains("TODO"));
+        assert!(result.contains("data"));
+    }
+
+    #[test]
+    fn sdk_setter_map_generates_todo() {
+        let result = sdk_setter("metadata", &GoType::MapOfString);
+        assert!(result.contains("TODO"));
+    }
+
+    // --- IacType -> GoType Set variants ---
+
+    #[test]
+    fn iac_set_of_string_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::Set(Box::new(IacType::String))),
+            GoType::ListOfString
+        );
+    }
+
+    #[test]
+    fn iac_set_of_integer_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::Set(Box::new(IacType::Integer))),
+            GoType::ListOfInt64
+        );
+    }
+
+    #[test]
+    fn iac_set_of_float_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::Set(Box::new(IacType::Float))),
+            GoType::ListOfFloat64
+        );
+    }
+
+    #[test]
+    fn iac_set_of_boolean_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::Set(Box::new(IacType::Boolean))),
+            GoType::ListOfBool
+        );
+    }
+
+    #[test]
+    fn iac_set_of_nested_falls_back_to_list_of_string() {
+        assert_eq!(
+            GoType::from(&IacType::Set(Box::new(IacType::List(Box::new(IacType::String))))),
+            GoType::ListOfString
+        );
+    }
+
+    #[test]
+    fn iac_list_of_integer_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::List(Box::new(IacType::Integer))),
+            GoType::ListOfInt64
+        );
+    }
+
+    #[test]
+    fn iac_list_of_float_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::List(Box::new(IacType::Float))),
+            GoType::ListOfFloat64
+        );
+    }
+
+    #[test]
+    fn iac_list_of_boolean_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::List(Box::new(IacType::Boolean))),
+            GoType::ListOfBool
+        );
+    }
+
+    #[test]
+    fn iac_list_of_nested_falls_back_to_list_of_string() {
+        assert_eq!(
+            GoType::from(&IacType::List(Box::new(IacType::Map(Box::new(IacType::String))))),
+            GoType::ListOfString
+        );
+    }
+
+    #[test]
+    fn iac_any_to_go_type() {
+        assert_eq!(GoType::from(&IacType::Any), GoType::String);
+    }
+
+    #[test]
+    fn iac_object_to_go_type() {
+        let obj = IacType::Object {
+            name: "CustomObj".to_string(),
+            fields: vec![],
+        };
+        assert_eq!(GoType::from(&obj), GoType::Object("CustomObj".to_string()));
+    }
+
+    #[test]
+    fn iac_map_to_go_type() {
+        assert_eq!(
+            GoType::from(&IacType::Map(Box::new(IacType::Integer))),
+            GoType::MapOfString
+        );
+    }
+
+    #[test]
+    fn iac_enum_with_integer_underlying() {
+        let enum_type = IacType::Enum {
+            values: vec!["1".into(), "2".into()],
+            underlying: Box::new(IacType::Integer),
+        };
+        assert_eq!(GoType::from(&enum_type), GoType::Int64);
+    }
+
+    // --- IacType -> TfAttrType via From ---
+
+    #[test]
+    fn iac_type_to_tf_attr_type() {
+        assert_eq!(TfAttrType::from(&IacType::String), TfAttrType::String);
+        assert_eq!(TfAttrType::from(&IacType::Integer), TfAttrType::Int64);
+        assert_eq!(TfAttrType::from(&IacType::Float), TfAttrType::Float64);
+        assert_eq!(TfAttrType::from(&IacType::Boolean), TfAttrType::Bool);
+        assert_eq!(
+            TfAttrType::from(&IacType::List(Box::new(IacType::String))),
+            TfAttrType::Set(Box::new(TfAttrType::String))
+        );
+        assert_eq!(
+            TfAttrType::from(&IacType::Map(Box::new(IacType::String))),
+            TfAttrType::Map(Box::new(TfAttrType::String))
+        );
+    }
+
+    // --- iac_attr_to_tf coverage ---
+
+    #[test]
+    fn iac_attr_to_tf_basic() {
+        let attr = iac_forge::IacAttribute {
+            api_name: "my-field".to_string(),
+            canonical_name: "my_field".to_string(),
+            description: "A test field".to_string(),
+            iac_type: IacType::String,
+            required: true,
+            computed: false,
+            sensitive: true,
+            immutable: true,
+            default_value: None,
+            enum_values: None,
+            read_path: None,
+            update_only: false,
+        };
+        let tf = iac_attr_to_tf(&attr);
+        assert_eq!(tf.tf_name, "my_field");
+        assert_eq!(tf.go_name, "MyField");
+        assert_eq!(tf.description, "A test field");
+        assert!(tf.required);
+        assert!(tf.sensitive);
+        assert!(tf.force_new);
+        assert!(!tf.computed);
+        assert_eq!(tf.go_type, "string");
+        assert_eq!(tf.tf_value_type, "types.String");
+        assert_eq!(tf.tf_type_expr, "types.StringType");
+        assert!(tf.default_value.is_none());
+    }
+
+    #[test]
+    fn iac_attr_to_tf_with_default_value() {
+        let attr = iac_forge::IacAttribute {
+            api_name: "timeout".to_string(),
+            canonical_name: "timeout".to_string(),
+            description: "Timeout value".to_string(),
+            iac_type: IacType::Integer,
+            required: false,
+            computed: true,
+            sensitive: false,
+            immutable: false,
+            default_value: Some(serde_json::json!(30)),
+            enum_values: None,
+            read_path: None,
+            update_only: false,
+        };
+        let tf = iac_attr_to_tf(&attr);
+        assert!(!tf.required);
+        assert!(tf.computed);
+        assert!(!tf.sensitive);
+        assert!(!tf.force_new);
+        assert!(tf.optional);
+        assert_eq!(tf.go_type, "int64");
+        assert_eq!(tf.default_value, Some("30".to_string()));
+    }
+
+    #[test]
+    fn iac_attr_to_tf_list_type() {
+        let attr = iac_forge::IacAttribute {
+            api_name: "tags".to_string(),
+            canonical_name: "tags".to_string(),
+            description: "Tags".to_string(),
+            iac_type: IacType::List(Box::new(IacType::String)),
+            required: false,
+            computed: false,
+            sensitive: false,
+            immutable: false,
+            default_value: None,
+            enum_values: None,
+            read_path: None,
+            update_only: false,
+        };
+        let tf = iac_attr_to_tf(&attr);
+        assert_eq!(tf.go_type, "[]string");
+        assert_eq!(tf.tf_value_type, "types.Set");
+        assert!(tf.tf_type_expr.contains("SetType"));
+    }
 }
