@@ -361,7 +361,7 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/iac-forge";
-          rev = "efe513808807b1d35c5b944e20095212f89d4efe";
+          rev = "ce9f7f89dcd70a8d81cd184052b02d6804fd4ef5";
           sha256 = "02j5znrwchyq98mks6ginfc54l9r6sjkni4rndlmbkm13kqsjxfp";
         };
         libName = "iac_forge";
@@ -534,6 +534,18 @@ rec {
           "value-bag" = [ "dep:value-bag" ];
         };
       };
+      "meimei" = rec {
+        crateName = "meimei";
+        version = "0.1.0";
+        edition = "2024";
+        workspace_member = null;
+        src = pkgs.fetchgit {
+          url = "https://github.com/pleme-io/meimei";
+          rev = "fca2dbee5baa3bad7841b2a34fb04ab84b8baab5";
+          sha256 = "0npzyv2h00j40wvnya6d901ai5cafd0zyk68xkf2sqw4ymdjv1fn";
+        };
+
+      };
       "memchr" = rec {
         crateName = "memchr";
         version = "2.8.0";
@@ -579,7 +591,7 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/openapi-forge";
-          rev = "e9bd7d2313580b9dd5357dd22cde9fc5111cd124";
+          rev = "2d1b6a349f765c11df6e7ef2127966dfa721a7d3";
           sha256 = "15h1nylbr18v33s1d58zq9r5n8a7iwx2vpybc9fbv1dw5d6qi3cn";
         };
         libName = "openapi_forge";
@@ -599,8 +611,8 @@ rec {
             packageId = "serde_json";
           }
           {
-            name = "serde_yaml";
-            packageId = "serde_yaml";
+            name = "serde_yaml_ng";
+            packageId = "serde_yaml_ng";
           }
           {
             name = "thiserror";
@@ -1001,13 +1013,13 @@ rec {
         };
         resolvedDefaultFeatures = [ "serde" ];
       };
-      "serde_yaml" = rec {
-        crateName = "serde_yaml";
-        version = "0.9.34+deprecated";
+      "serde_yaml_ng" = rec {
+        crateName = "serde_yaml_ng";
+        version = "0.10.0";
         edition = "2021";
-        sha256 = "0isba1fjyg3l6rxk156k600ilzr8fp7crv82rhal0rxz5qd1m2va";
+        sha256 = "07ylpzx9xykdj4fqfa0vb6xz4c1pazrqqibv78hd8dlbp4kvckbv";
         authors = [
-          "David Tolnay <dtolnay@gmail.com>"
+          "Antoine Catton <devel@antoine.catton.fr>"
         ];
         dependencies = [
           {
@@ -1116,15 +1128,11 @@ rec {
       };
       "terraform-forge" = rec {
         crateName = "terraform-forge";
-        version = "0.1.0";
+        version = "0.1.1";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         libName = "terraform_forge";
         dependencies = [
-          {
-            name = "heck";
-            packageId = "heck";
-          }
           {
             name = "iac-forge";
             packageId = "iac-forge";
@@ -1133,6 +1141,10 @@ rec {
             name = "indexmap";
             packageId = "indexmap";
             features = [ "serde" ];
+          }
+          {
+            name = "meimei";
+            packageId = "meimei";
           }
           {
             name = "openapi-forge";
