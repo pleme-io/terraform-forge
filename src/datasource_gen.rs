@@ -340,7 +340,7 @@ components:
         access_id: { type: string, description: "Access ID" }
         token: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         (ds, api, ProviderDefaults::default())
     }
 
@@ -455,7 +455,7 @@ components:
         name: { type: string }
         auto_field: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let attrs =
             generate_datasource_attributes(&ds, &api, &ProviderDefaults::default()).expect("gen");
 
@@ -506,7 +506,7 @@ components:
       properties:
         secret: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let attrs =
             generate_datasource_attributes(&ds, &api, &ProviderDefaults::default()).expect("gen");
         let secret = attrs
@@ -567,7 +567,7 @@ components:
         count: { type: integer }
         enabled: { type: boolean }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let result = generate_datasource(
             &ds,
             &api,
@@ -700,7 +700,7 @@ components:
         path: { type: string, description: "Path" }
         count: { type: integer }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let result = generate_datasource(
             &ds,
             &api,
@@ -735,7 +735,7 @@ paths: {}
 components:
   schemas: {}
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let result = generate_datasource_attributes(&ds, &api, &ProviderDefaults::default());
         assert!(result.is_err(), "Missing schema should error");
     }
@@ -759,7 +759,7 @@ paths: {}
 components:
   schemas: {}
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let result = generate_datasource(&ds, &api, &ProviderDefaults::default(), "sdk");
         assert!(result.is_err(), "Missing schema should error");
     }

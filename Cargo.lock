@@ -119,6 +119,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "go-synthesizer"
+version = "0.1.0"
+dependencies = [
+ "synthesizer-core",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -386,6 +393,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "synthesizer-core"
+version = "0.1.0"
+source = "git+https://github.com/pleme-io/synthesizer-core#d4b3ba043320212edd781191e88257bc63127d10"
+
+[[package]]
 name = "takumi"
 version = "0.1.0"
 source = "git+https://github.com/pleme-io/takumi#234adbbe0e3f75239cba39b7fe033d9d6806b162"
@@ -413,6 +425,7 @@ dependencies = [
 name = "terraform-forge"
 version = "0.1.2"
 dependencies = [
+ "go-synthesizer",
  "iac-forge",
  "indexmap",
  "meimei",

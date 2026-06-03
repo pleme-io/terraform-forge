@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn from_openapi_error() {
         let api_result: Result<openapi_forge::Spec, _> =
-            openapi_forge::Spec::from_str("not valid yaml {{{}}}");
+            openapi_forge::Spec::parse("not valid yaml {{{}}}");
         if let Err(openapi_err) = api_result {
             let err: ForgeError = openapi_err.into();
             assert!(err.to_string().contains("OpenAPI error"));
