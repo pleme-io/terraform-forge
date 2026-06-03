@@ -709,8 +709,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/meimei";
-          rev = "eb2e033aaf8bb4fbab548f7c5dda587ada2427ee";
-          sha256 = "183lyr306yx1gsq3ph6za061cxaxdg82r3lda12kl28jqkjck1za";
+          rev = "9274859228fbb723437fc0573041fc034d27a9e9";
+          sha256 = "02j42xilxl8vf9ns8z7bqkr5hkdava201skvqbhdczcsmsy9zpmy";
         };
 
       };
@@ -754,13 +754,13 @@ rec {
       };
       "openapi-forge" = rec {
         crateName = "openapi-forge";
-        version = "0.1.2";
+        version = "0.1.4";
         edition = "2024";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/openapi-forge";
-          rev = "51e138522e8697349192adda9d167d4c609949ed";
-          sha256 = "15pdvpq2fh51ynn5vxhw1nw2vlkwww4mpapq4ka4462b3jgypxiz";
+          rev = "a8e0fb6363ce0278e5a994c6fcc0bccdb044252a";
+          sha256 = "1zczy2f5gj4r0ryb4smriz5dxllznc2p365afs1c0qg7g12ml5il";
         };
         libName = "openapi_forge";
         dependencies = [
@@ -1015,8 +1015,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/sekkei";
-          rev = "4e969b085bd8e55811edf317b449cd965c66ee88";
-          sha256 = "1a2w0l8kfi82b6i5vi9ihjqvlvswrkcw26ym90cc2ynwf7x158j0";
+          rev = "d7e53a772d42594be70c8cbcdce5d75cab8b4ddb";
+          sha256 = "1ws0hqnn4414hcgb79gxdg9l4fr1r98hjafqdlawaniy0cpxas8s";
         };
         dependencies = [
           {
@@ -1311,8 +1311,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/takumi";
-          rev = "611d2e6ec306e0b35a7471810ea6cafcd1263298";
-          sha256 = "0ls9iij3gv7y9p61dj2csjm15w92wda459jx0bgn1gqgcx8ka05z";
+          rev = "754e30c59449bbe259244a978d287978bf01aeb2";
+          sha256 = "1bigh000x69dcf1s43fgszc2142r30whwdc8flsyqghzaq7xzzgl";
         };
         dependencies = [
           {
@@ -1386,7 +1386,7 @@ rec {
       };
       "terraform-forge" = rec {
         crateName = "terraform-forge";
-        version = "0.1.3";
+        version = "0.1.4";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         libName = "terraform_forge";
