@@ -134,11 +134,11 @@ impl Backend for TerraformBackend {
         code.push_str(&mapping_code.replace('\n', "\n// "));
         code.push('\n');
 
-        Ok(vec![GeneratedArtifact {
-            path: format!("resources/{file_name}"),
-            content: code,
-            kind: ArtifactKind::Resource,
-        }])
+        Ok(vec![GeneratedArtifact::new(
+            format!("resources/{file_name}"),
+            code,
+            ArtifactKind::Resource,
+        )])
     }
 
     fn generate_data_source(
@@ -197,11 +197,11 @@ impl Backend for TerraformBackend {
             &ds_type_names,
         );
 
-        Ok(vec![GeneratedArtifact {
-            path: "provider/provider.go".to_string(),
-            content: code,
-            kind: ArtifactKind::Provider,
-        }])
+        Ok(vec![GeneratedArtifact::new(
+            "provider/provider.go",
+            code,
+            ArtifactKind::Provider,
+        )])
     }
 
     fn generate_test(
@@ -217,11 +217,11 @@ impl Backend for TerraformBackend {
         let resource_spec = ir_to_resource_spec(resource);
         let test = crate::test_gen::generate_test(&resource_spec);
 
-        Ok(vec![GeneratedArtifact {
-            path: format!("resources/{file_name}"),
-            content: test.go_code,
-            kind: ArtifactKind::Test,
-        }])
+        Ok(vec![GeneratedArtifact::new(
+            format!("resources/{file_name}"),
+            test.go_code,
+            ArtifactKind::Test,
+        )])
     }
 
     fn naming(&self) -> &dyn NamingConvention {
@@ -312,7 +312,7 @@ mod tests {
                 gateway_env_var: "AKEYLESS_GATEWAY".to_string(),
             },
             skip_fields: vec!["token".to_string()],
-            platform_config: std::collections::HashMap::new(),
+            platform_config: std::collections::BTreeMap::new(),
         }
     }
 
@@ -339,8 +339,10 @@ mod tests {
                     description: "Secret name".to_string(),
                     iac_type: IacType::String,
                     required: true,
+                    optional: false,
                     computed: false,
                     sensitive: false,
+                    json_encoded: false,
                     immutable: true,
                     default_value: None,
                     enum_values: None,
@@ -353,8 +355,10 @@ mod tests {
                     description: "Secret value".to_string(),
                     iac_type: IacType::String,
                     required: true,
+                    optional: false,
                     computed: false,
                     sensitive: true,
+                    json_encoded: false,
                     immutable: false,
                     default_value: None,
                     enum_values: None,
@@ -367,8 +371,10 @@ mod tests {
                     description: "Tags".to_string(),
                     iac_type: IacType::List(Box::new(IacType::String)),
                     required: false,
+                    optional: false,
                     computed: false,
                     sensitive: false,
+                    json_encoded: false,
                     immutable: false,
                     default_value: None,
                     enum_values: None,
@@ -381,6 +387,7 @@ mod tests {
                 import_field: "name".to_string(),
                 force_replace_fields: vec!["name".to_string()],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         }
     }
 
@@ -471,8 +478,10 @@ mod tests {
                 description: "Max TTL".to_string(),
                 iac_type: IacType::Integer,
                 required: true,
+                optional: false,
                 computed: false,
                 sensitive: false,
+                json_encoded: false,
                 immutable: true, // force_new
                 default_value: None,
                 enum_values: None,
@@ -484,6 +493,7 @@ mod tests {
                 import_field: "max_ttl".to_string(),
                 force_replace_fields: vec!["max_ttl".to_string()],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::new("github.com/test/sdk");
@@ -528,8 +538,10 @@ mod tests {
                 description: "Admin flag".to_string(),
                 iac_type: IacType::Boolean,
                 required: true,
+                optional: false,
                 computed: false,
                 sensitive: false,
+                json_encoded: false,
                 immutable: true, // force_new
                 default_value: None,
                 enum_values: None,
@@ -541,6 +553,7 @@ mod tests {
                 import_field: "is_admin".to_string(),
                 force_replace_fields: vec!["is_admin".to_string()],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::new("github.com/test/sdk");
@@ -581,6 +594,7 @@ mod tests {
                 import_field: "id".to_string(),
                 force_replace_fields: vec![],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::new("github.com/test/sdk");
@@ -622,8 +636,10 @@ mod tests {
                 description: "Name".to_string(),
                 iac_type: IacType::String,
                 required: true,
+                optional: false,
                 computed: false,
                 sensitive: false,
+                json_encoded: false,
                 immutable: false,
                 default_value: None,
                 enum_values: None,
@@ -635,6 +651,7 @@ mod tests {
                 import_field: "name".to_string(),
                 force_replace_fields: vec![],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::new("github.com/test/sdk");
@@ -708,7 +725,7 @@ mod tests {
 
     #[test]
     fn from_provider_extracts_sdk_import() {
-        let mut platform_config = std::collections::HashMap::new();
+        let mut platform_config = std::collections::BTreeMap::new();
         let mut tf_table = toml::map::Map::new();
         tf_table.insert(
             "sdk_import".to_string(),
@@ -750,7 +767,7 @@ mod tests {
                 gateway_env_var: "G".to_string(),
             },
             skip_fields: vec![],
-            platform_config: std::collections::HashMap::new(),
+            platform_config: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::from_provider(&provider);
@@ -808,6 +825,7 @@ mod tests {
             read_schema: "GetDS".to_string(),
             read_response_schema: None,
             attributes: vec![],
+            read_mapping: std::collections::BTreeMap::new(),
         };
         let artifacts = backend.generate_data_source(&ds, &provider).unwrap();
         assert!(artifacts.is_empty(), "generate_data_source currently returns empty");
@@ -827,6 +845,7 @@ mod tests {
             read_schema: "GetAuthMethod".to_string(),
             read_response_schema: None,
             attributes: vec![],
+            read_mapping: std::collections::BTreeMap::new(),
         };
         let artifacts = backend
             .generate_provider(&provider, &[resource], &[ds])
@@ -879,8 +898,10 @@ mod tests {
                 description: "".to_string(),
                 iac_type: IacType::String,
                 required: false,
+                optional: false,
                 computed: false,
                 sensitive: false,
+                json_encoded: false,
                 immutable: false,
                 default_value: None,
                 enum_values: None,
@@ -892,6 +913,7 @@ mod tests {
                 import_field: "x".to_string(),
                 force_replace_fields: vec![],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
         let spec = ir_to_resource_spec(&resource);
         let field = spec.fields.get("x").unwrap();
@@ -945,8 +967,10 @@ mod tests {
                 description: "Rate".to_string(),
                 iac_type: IacType::Float,
                 required: true,
+                optional: false,
                 computed: false,
                 sensitive: false,
+                json_encoded: false,
                 immutable: true,
                 default_value: None,
                 enum_values: None,
@@ -958,6 +982,7 @@ mod tests {
                 import_field: "rate".to_string(),
                 force_replace_fields: vec!["rate".to_string()],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::new("github.com/test/sdk");
@@ -994,8 +1019,10 @@ mod tests {
                 description: "Regions".to_string(),
                 iac_type: IacType::List(Box::new(IacType::String)),
                 required: true,
+                optional: false,
                 computed: false,
                 sensitive: false,
+                json_encoded: false,
                 immutable: true,
                 default_value: None,
                 enum_values: None,
@@ -1007,6 +1034,7 @@ mod tests {
                 import_field: "regions".to_string(),
                 force_replace_fields: vec!["regions".to_string()],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::new("github.com/test/sdk");
@@ -1075,7 +1103,7 @@ mod tests {
 
     #[test]
     fn from_provider_non_string_sdk_import_falls_back() {
-        let mut platform_config = std::collections::HashMap::new();
+        let mut platform_config = std::collections::BTreeMap::new();
         let mut tf_table = toml::map::Map::new();
         tf_table.insert(
             "sdk_import".to_string(),
@@ -1142,8 +1170,10 @@ mod tests {
                     description: "Name".to_string(),
                     iac_type: IacType::String,
                     required: true,
+                    optional: false,
                     computed: false,
                     sensitive: false,
+                    json_encoded: false,
                     immutable: false,
                     default_value: None,
                     enum_values: None,
@@ -1156,8 +1186,10 @@ mod tests {
                     description: "Count".to_string(),
                     iac_type: IacType::Integer,
                     required: false,
+                    optional: false,
                     computed: false,
                     sensitive: false,
+                    json_encoded: false,
                     immutable: false,
                     default_value: None,
                     enum_values: None,
@@ -1170,8 +1202,10 @@ mod tests {
                     description: "Enabled".to_string(),
                     iac_type: IacType::Boolean,
                     required: false,
+                    optional: false,
                     computed: false,
                     sensitive: false,
+                    json_encoded: false,
                     immutable: false,
                     default_value: None,
                     enum_values: None,
@@ -1184,6 +1218,7 @@ mod tests {
                 import_field: "name".to_string(),
                 force_replace_fields: vec![],
             },
+            read_mapping: std::collections::BTreeMap::new(),
         };
 
         let backend = TerraformBackend::new("github.com/test/sdk");
@@ -1210,6 +1245,7 @@ mod tests {
             read_schema: "GetSecret".to_string(),
             read_response_schema: None,
             attributes: vec![],
+            read_mapping: std::collections::BTreeMap::new(),
         };
         let artifacts = backend
             .generate_provider(&provider, &[], &[ds])

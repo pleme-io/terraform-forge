@@ -354,7 +354,7 @@ components:
         name:
           type: string
 "#;
-        let api = Spec::from_str(api_str).expect("parse api");
+        let api = Spec::parse(api_str).expect("parse api");
         (resource, api)
     }
 
@@ -483,7 +483,7 @@ components:
       properties:
         name: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let attrs = generate_schema_attributes(&resource, &api, &ProviderDefaults::default())
             .expect("gen");
 
@@ -551,7 +551,7 @@ components:
       properties:
         name: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let attrs = generate_schema_attributes(&resource, &api, &ProviderDefaults::default())
             .expect("gen");
 
@@ -1129,7 +1129,7 @@ components:
       properties:
         name: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let attrs = generate_schema_attributes(&resource, &api, &ProviderDefaults::default())
             .expect("gen");
         let name_attr = attrs.iter().find(|a| a.tf_name == "name").expect("name");
@@ -1171,7 +1171,7 @@ components:
       properties:
         name: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let result = generate_schema_attributes(&resource, &api, &ProviderDefaults::default());
         assert!(result.is_err(), "Missing create schema should error");
     }
@@ -1257,7 +1257,7 @@ components:
       properties:
         name: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let attrs = generate_schema_attributes(&resource, &api, &ProviderDefaults::default())
             .expect("gen");
         let region = attrs.iter().find(|a| a.tf_name == "region").expect("region");
@@ -1323,7 +1323,7 @@ components:
       properties:
         name: { type: string }
 "#;
-        let api = Spec::from_str(api_str).expect("parse");
+        let api = Spec::parse(api_str).expect("parse");
         let attrs = generate_schema_attributes(&resource, &api, &ProviderDefaults::default())
             .expect("gen");
         let timeout = attrs

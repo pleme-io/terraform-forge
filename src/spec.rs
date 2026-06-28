@@ -613,7 +613,7 @@ components:
       properties:
         output: { type: string }
 "#;
-        openapi_forge::Spec::from_str(api_str).expect("parse api")
+        openapi_forge::Spec::parse(api_str).expect("parse api")
     }
 
     #[test]
