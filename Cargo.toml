@@ -9,7 +9,7 @@ repository = "https://github.com/pleme-io/terraform-forge"
 documentation = "https://docs.rs/terraform-forge"
 readme = "README.md"
 license = "MIT"
-categories = ["development-tools", "code-generators"]
+categories = ["development-tools"]
 keywords = ["terraform", "codegen", "openapi", "provider"]
 
 [lints.clippy]
