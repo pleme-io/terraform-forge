@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "cargo_lock_sha256": "d6140e0c9ab1d4b44d32382e9dc847c6bad8df067e456cc2501e204915a560d9",
+  "cargo_lock_sha256": "0b1afbb895de2079d6f5de9bedc0f0a5e405c7549aa4c27c031e86db811cf92f",
   "manifest_sha256": {
-    "Cargo.toml": "780061bd38827fbfc5e564ad11fca8e6d0145f71bcabef67a40f73fb300bdf52"
+    "Cargo.toml": "2a4ab9d611845386fd129d3a9f7c4f61c7b39140ef026b7f2f8ade60d440a098"
   },
   "target_resolves": {
     "base": {
@@ -941,7 +941,7 @@
           "getrandom"
         ]
       },
-      "terraform-forge-0.1.5": {
+      "terraform-forge-0.1.6": {
         "runtime_dependencies": [
           {
             "name": "go_synthesizer",
@@ -2439,7 +2439,7 @@
     "tempfile-3.27.0": {
       "edition": "2021"
     },
-    "terraform-forge-0.1.5": {
+    "terraform-forge-0.1.6": {
       "edition": "2024",
       "lib_target": {
         "name": "terraform_forge",
