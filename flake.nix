@@ -1,44 +1,24 @@
 {
   description = "terraform-forge — Terraform provider code generator";
 
-  inputs = {
-    nixpkgs.follows = "substrate/nixpkgs";
-    substrate = {
-      url = "github:pleme-io/substrate";
-    };
-    crate2nix = {
-      url = "github:nix-community/crate2nix";
-      flake = false;
-    };
-    fenix = {
-      url = "github:nix-community/fenix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    devenv = {
-      url = "github:cachix/devenv";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-  };
+  # substrate.rust.library dispatches over the committed Cargo.gen.lock (the
+  # slim gen delta, reconstructed to a full BuildSpec in PURE NIX) rather than
+  # through crate2nix.
+  #
+  # NOT `import "${substrate}/lib/rust-library.nix"`: that entry point routes
+  # through crate2nix, which reads a derivation back during evaluation
+  # (import-from-derivation) in two independent places -- its Cargo.nix
+  # generate step, and `mkGitHash` (tools.nix:293) hashing a git dependency by
+  # building a runCommand. Both are a DIFFERENT mechanism from the one
+  # substrate's gen-pin bump removed, which lived in gen's git-source handling,
+  # so they survived that fix untouched. The delta path reads what it needs out
+  # of an artifact this repo already tracks, so there is no new generated file
+  # to keep fresh.
+  inputs.substrate.url = "github:pleme-io/substrate";
 
-  outputs = { nixpkgs, substrate, crate2nix, fenix, devenv, ... }:
-    let
-      systems = [ "aarch64-darwin" "x86_64-linux" "aarch64-linux" ];
-
-      forEachSystem = f: nixpkgs.lib.genAttrs systems (system:
-        let
-          rustLibrary = import "${substrate}/lib/rust-library.nix" {
-            inherit system nixpkgs crate2nix devenv;
-            nixLib = substrate;
-          };
-          result = rustLibrary {
-            name = "terraform-forge";
-            src = ./.;
-          };
-        in f result
-      );
-    in {
-      packages = forEachSystem (r: r.packages);
-      devShells = forEachSystem (r: r.devShells);
-      apps = forEachSystem (r: r.apps);
+  outputs =
+    { substrate, ... }:
+    substrate.rust.library {
+      src = ./.;
     };
 }
